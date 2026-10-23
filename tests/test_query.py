@@ -1,0 +1,78 @@
+import pytest
+
+from brain import query
+from brain.ingest import ingest
+
+from conftest import CWD2, SID, SID2, rec, session_records, write_jsonl
+
+
+@pytest.fixture
+def loaded(conn, root):
+    write_jsonl(root / "a" / f"{SID}.jsonl", session_records())
+    write_jsonl(root / "b" / f"{SID2}.jsonl", [
+        rec("v1", "user", [{"type": "text", "text": "Revisa la regresion logistica"}],
+            "2026-10-05T08:00:00Z", sid=SID2, cwd=CWD2, entry="claude-vscode"),
+        rec("v2", "assistant", [{"type": "text", "text": "Hecho, AUC 0.88"}],
+            "2026-10-05T08:01:00Z", sid=SID2, cwd=CWD2, entry="claude-vscode"),
+    ])
+    ingest(conn, root)
+    return conn
+
+
+def test_search_ignores_accents_and_syntax(loaded):
+    hits = query.search(loaded, "regresion")
+    assert {h["session_id"] for h in hits} == {SID, SID2}
+    assert query.search(loaded, "regresión logística")[0]["session_id"] == SID2
+    assert query.search(loaded, 'GraphSAGE"; -- (x') == []  # no FTS syntax error
+    assert "[GraphSAGE]" in query.search(loaded, "graphsage")[0]["snippet"]
+
+
+def test_search_filters(loaded):
+    assert {h["session_id"] for h in query.search(loaded, "regresion", source="claude-vscode")} == {SID2}
+    assert {h["session_id"] for h in query.search(loaded, "regresion", since="2026-10-03")} == {SID2}
+    assert not query.search(loaded, "python train")  # tool calls hidden by default
+    tools = query.DEFAULT_ROLES + ("tool",)
+    assert query.search(loaded, "python train", project="gnn", roles=tools)  # partial project name
+
+
+def test_folders_with_same_name_form_one_project(loaded):
+    (p,) = query.projects(loaded)
+    assert p["project"] == "mlvsgnn" and p["sessions"] == 2
+
+
+def test_session_transcript_and_truncation(loaded):
+    out = query.session(loaded, SID[:8])
+    assert [m["role"] for m in out["messages"]] == ["user", "assistant", "summary", "summary"]
+    assert "tool" in [m["role"] for m in query.session(loaded, SID, roles=query.DEFAULT_ROLES + ("tool",))["messages"]]
+    assert not out["truncated"]
+
+    out = query.session(loaded, SID, max_chars=5)
+    assert out["truncated"] and len(out["messages"]) == 1
+    nxt = query.session(loaded, SID, after=out["messages"][0]["ts"], max_chars=5)
+    assert nxt["messages"][0]["ts"] > out["messages"][0]["ts"]
+
+
+def test_digest_roundtrip_marks_newer_sessions(loaded):
+    d = query.save_digest(loaded, "project", "mlvsgnn", "Usamos GraphSAGE.", "2026-10-02T00:00:00Z")
+    out = query.project(loaded, "gnn")
+    assert out["digest"]["id"] == d["id"]
+    flags = {s["session_id"]: s["after_digest"] for s in out["sessions"]}
+    assert flags == {SID: False, SID2: True}
+
+    d2 = query.save_digest(loaded, "project", "mlvsgnn", "Todo cubierto.")
+    assert d2["covers_until_ts"] == "2026-10-05T08:01:00Z"
+    assert not any(s["after_digest"] for s in query.project(loaded, "mlvsgnn")["sessions"])
+
+
+def test_alias_relabels_and_applies_to_new_ingests(loaded, root):
+    assert query.alias(loaded, "/home/u/Dropbox/PhD", "thesis") == 1
+    assert {p["project"] for p in query.projects(loaded)} == {"mlvsgnn", "thesis"}
+    assert [s["session_id"] for s in query.recent(loaded, project="thesis")] == [SID2]
+
+
+def test_ambiguous_or_missing_project(loaded):
+    query.alias(loaded, "/home/u/Dropbox/PhD", "gnnthesis")
+    with pytest.raises(LookupError, match="ambiguous"):
+        query.resolve_project(loaded, "gnn")
+    with pytest.raises(LookupError, match="no project"):
+        query.resolve_project(loaded, "nothing")

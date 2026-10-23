@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     msg_count   integer NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS sessions_project ON sessions (project, last_ts);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo text;  -- normalized git remote
 
 CREATE TABLE IF NOT EXISTS messages (
     uuid         text PRIMARY KEY,

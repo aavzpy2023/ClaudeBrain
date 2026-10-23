@@ -5,12 +5,15 @@ into SQLite (`~/.local/share/claude-brain/brain.db`, override with `CLAUDE_BRAIN
 sessions can recall and report on past work. Stdlib-only Python so the hook needs no venv;
 `uv run pytest` for tests.
 
-- **Schema, connection, project naming.** Project = cwd's last folder name normalized (lowercase
-  ASCII alnum, leading year dropped). `folder_aliases` (normalized folder name → project) override
-  it, matched at any depth, deepest folder wins — machine-independent on purpose. POSIX and Windows
-  paths both parsed; temp dirs map to `tmp`. Legacy `project_aliases` (path prefixes, ≤0.3) is
-  copied forward on connect and otherwise unused.
-  Files: `brain/db.py::SCHEMA`, `brain/db.py::normalize_name`, `brain/db.py::project_for`, `brain/db.py::set_alias`
+- **Project naming (machine-independent on purpose).** Precedence in `project_for`: alias on the
+  session's git remote → alias on any cwd folder name (deepest first) → repo name (remote's last
+  segment, else repo root folder; looked up in aliases too) → `tmp` for temp dirs → cwd's last
+  folder. Names are normalized (lowercase ASCII alnum, leading year dropped). `folder_aliases`
+  keys are normalized folder names OR remotes like `github.com/owner/repo` (contain `/`).
+  `sessions.repo`/`repo_root` are resolved once per session after each ingest (`resolve_repos`,
+  reading .git files; `repo_root=''` = checked, not a repo) and kept even if the folder vanishes.
+  POSIX and Windows paths both parsed. Legacy `project_aliases` (≤0.3) is copied forward on connect.
+  Files: `brain/db.py::project_for`, `brain/db.py::set_alias`, `brain/db.py::resolve_repos`, `brain/gitrepo.py::find_repo`, `brain/gitrepo.py::normalize_remote`
 - **Ingestion is incremental and idempotent.** Per-file byte offset in `files`; partial last line
   left for next run; `INSERT OR IGNORE` on message `uuid`. Lines starting `{"type":"` are skipped
   unparsed (bookkeeping, multi-MB blobs) except `ai-title`/`custom-title`; a custom title

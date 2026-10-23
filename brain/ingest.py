@@ -14,7 +14,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect, load_aliases, project_for
+from brain.db import connect, load_aliases, project_for, resolve_repos
 
 DEFAULT_ROOT = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
 TOOL_INPUT_CHARS = 300
@@ -188,6 +188,8 @@ def refresh_session_stats(conn: sqlite3.Connection, session_ids) -> None:
 
 def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = False) -> dict:
     aliases = load_aliases(conn)
+    if full:  # a full pass also retries folders that looked like non-repos (maybe absent then)
+        conn.execute("UPDATE sessions SET repo_root = NULL WHERE repo_root = ''")
     known = {
         r["path"]: (r["size"], r["mtime"], r["offset"])
         for r in conn.execute("SELECT path, size, mtime, offset FROM files")
@@ -210,6 +212,7 @@ def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = Fal
         conn.commit()  # per file, so an interrupted backfill keeps its progress
         stats["files"] += 1
         stats["sessions"] += len(touched)
+    resolve_repos(conn)
     return stats
 
 

@@ -92,20 +92,21 @@ def push_sessions(local: sqlite3.Connection, remote) -> None:
     """Sessions mutate (titles, stats, alias relabels); upsert all, only rewriting changed rows."""
     rows = local.execute(
         """SELECT session_id, project, project_cwd, entrypoint, git_branch, title,
-                  first_ts, last_ts, msg_count FROM sessions"""
+                  first_ts, last_ts, msg_count, repo FROM sessions"""
     ).fetchall()
     with remote.cursor() as cur:
         cur.executemany(
             """INSERT INTO sessions AS s (session_id, project, project_cwd, entrypoint, git_branch,
-                                          title, first_ts, last_ts, msg_count)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          title, first_ts, last_ts, msg_count, repo)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (session_id) DO UPDATE SET
                  project = excluded.project, project_cwd = excluded.project_cwd,
                  entrypoint = excluded.entrypoint, git_branch = excluded.git_branch,
                  title = excluded.title, first_ts = excluded.first_ts,
-                 last_ts = excluded.last_ts, msg_count = excluded.msg_count
-               WHERE (s.project, s.title, s.last_ts, s.msg_count)
-                     IS DISTINCT FROM (excluded.project, excluded.title, excluded.last_ts, excluded.msg_count)""",
+                 last_ts = excluded.last_ts, msg_count = excluded.msg_count, repo = excluded.repo
+               WHERE (s.project, s.title, s.last_ts, s.msg_count, s.repo)
+                     IS DISTINCT FROM (excluded.project, excluded.title, excluded.last_ts,
+                                       excluded.msg_count, excluded.repo)""",
             [tuple(r) for r in rows],
         )
     remote.commit()

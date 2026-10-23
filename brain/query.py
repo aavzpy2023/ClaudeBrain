@@ -234,8 +234,9 @@ def main(argv=None) -> None:
     p.add_argument("key", help="project name or session id")
     p.add_argument("--covers-until", help="ISO timestamp the summary covers up to")
 
-    p = sub.add_parser("alias", help="map a folder name (and its subfolders) to a project; no args lists")
-    p.add_argument("folder", nargs="?", help="folder name or path; only its last folder name counts")
+    p = sub.add_parser("alias", help="map a folder name or git remote to a project; no args lists")
+    p.add_argument("folder", nargs="?",
+                   help="folder name, git remote (any URL form), or an existing path (its name + its repo)")
     p.add_argument("name", nargs="?")
 
     args = parser.parse_args(argv)
@@ -266,7 +267,8 @@ def _run(conn: sqlite3.Connection, args) -> None:
         roles = DEFAULT_ROLES + (("tool",) if args.tools else ())
         out = session(conn, args.session_id, args.after, roles, args.sidechain, args.max_chars)
         s = out["session"]
-        print(f"# {s['title'] or '(untitled)'}\n{s['project']} · {s['project_cwd']} · {_session_line(s)}\n")
+        repo = f" · {s['repo']}" if s.get("repo") else ""
+        print(f"# {s['title'] or '(untitled)'}\n{s['project']} · {s['project_cwd']}{repo} · {_session_line(s)}\n")
         for m in out["messages"]:
             print(f"--- {m['role']} {_day(m['ts'])}\n{m['text']}\n")
         if out["truncated"]:
@@ -297,7 +299,8 @@ def _run(conn: sqlite3.Connection, args) -> None:
             print(f"alias set; {n} session(s) relabelled")
         else:
             for folder, name in sorted(load_aliases(conn).items(), key=lambda a: a[1]):
-                print(f"{name:<26} ← folder '{folder}'")
+                kind = "repo" if "/" in folder else "folder"
+                print(f"{name:<26} ← {kind} {folder}")
 
 
 if __name__ == "__main__":

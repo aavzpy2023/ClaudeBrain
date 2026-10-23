@@ -5,6 +5,8 @@ import tempfile
 import unicodedata
 from pathlib import Path
 
+from brain.gitrepo import find_repo, normalize_remote
+
 DEFAULT_DB = Path.home() / ".local" / "share" / "claude-brain" / "brain.db"
 
 SCHEMA = """
@@ -25,7 +27,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     title_is_custom INTEGER NOT NULL DEFAULT 0,
     first_ts    TEXT,
     last_ts     TEXT,
-    msg_count   INTEGER NOT NULL DEFAULT 0
+    msg_count   INTEGER NOT NULL DEFAULT 0,
+    repo        TEXT,  -- normalized git remote, e.g. github.com/owner/repo
+    repo_root   TEXT   -- NULL = not checked yet, '' = not a git repo (or folder gone)
 );
 CREATE INDEX IF NOT EXISTS sessions_project ON sessions(project, last_ts);
 
@@ -76,7 +80,8 @@ CREATE TABLE IF NOT EXISTS sync_state (
     value INTEGER NOT NULL
 );
 
--- Keyed by normalized folder name, not path, so one alias holds on every machine (and syncs).
+-- Keyed by normalized folder name or git remote (never a path), so one alias holds on every
+-- machine and syncs. Column name predates remote keys.
 CREATE TABLE IF NOT EXISTS folder_aliases (
     folder     TEXT PRIMARY KEY,
     project    TEXT NOT NULL,
@@ -97,9 +102,19 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _migrate_repo_columns(conn)
     conn.executescript(SCHEMA)
     _migrate_path_aliases(conn)
     return conn
+
+
+def _migrate_repo_columns(conn: sqlite3.Connection) -> None:
+    # Databases from ≤0.4 have sessions without repo/repo_root; CREATE IF NOT EXISTS won't add them.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+    if cols:
+        for col in ("repo", "repo_root"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE sessions ADD COLUMN {col} TEXT")
 
 
 def _migrate_path_aliases(conn: sqlite3.Connection) -> None:
@@ -138,8 +153,18 @@ def folder_key(path_or_name: str) -> str:
     return normalize_name(parts[-1]) if parts else ""
 
 
-def project_for(cwd: str | None, aliases: dict[str, str]) -> str:
-    """Project for a cwd: the deepest folder with an alias, else the last folder's normalized name."""
+def project_for(cwd: str | None, aliases: dict[str, str],
+                repo: str | None = None, repo_root: str | None = None) -> str:
+    """Project for a session, most specific rule first:
+
+    1. an alias on its git remote (github.com/owner/repo);
+    2. an alias on any folder of its cwd, deepest first;
+    3. the repo's name (from the remote, else the repo root folder), through its alias if any;
+    4. `tmp` for throwaway temp dirs;
+    5. the cwd's last folder name.
+    """
+    if repo and repo in aliases:
+        return aliases[repo]
     if not cwd:
         return "unknown"
     parts = path_parts(cwd)
@@ -147,6 +172,10 @@ def project_for(cwd: str | None, aliases: dict[str, str]) -> str:
         project = aliases.get(normalize_name(part))
         if project:
             return project
+    if repo_root:
+        name = normalize_name(repo.rsplit("/", 1)[-1]) if repo else folder_key(repo_root)
+        if name:
+            return aliases.get(name, name)
     # Headless runs in throwaway temp dirs would otherwise each become a "project".
     temp = path_parts(tempfile.gettempdir())
     if (parts[:1] == ["tmp"] and cwd.startswith("/")) or (temp and parts[: len(temp)] == temp):
@@ -158,16 +187,34 @@ def load_aliases(conn: sqlite3.Connection) -> dict[str, str]:
     return {r[0]: r[1] for r in conn.execute("SELECT folder, project FROM folder_aliases")}
 
 
-def set_alias(conn: sqlite3.Connection, folder_or_path: str, project: str) -> int:
-    """Map a folder name (any depth, any machine) to a project; returns sessions relabelled."""
-    folder = folder_key(folder_or_path)
-    if not folder:
-        raise ValueError(f"no folder name in {folder_or_path!r}")
-    conn.execute(
+def repo_key(text: str) -> str | None:
+    """A git remote in any spelling, or an already-normalized 'host.tld/owner/repo'."""
+    remote = normalize_remote(text)
+    if remote:
+        return remote
+    text = text.strip().lower()
+    if re.fullmatch(r"[\w.-]+\.[a-z]{2,}(?:/[\w.-]+){2,}/?", text):
+        return re.sub(r"\.git$", "", text.strip("/"))
+    return None
+
+
+def set_alias(conn: sqlite3.Connection, target: str, project: str) -> int:
+    """Alias a folder name, a git remote, or an existing folder path (its name, plus its repo's
+    remote if it is in one) to a project, on every machine once synced. Returns sessions relabelled."""
+    expanded = os.path.expanduser(target)
+    if os.path.isdir(expanded):
+        keys = [folder_key(expanded), find_repo(expanded)[0]]
+    else:
+        remote = repo_key(target)
+        keys = [remote] if remote else [folder_key(target)]
+    keys = [k for k in keys if k]
+    if not keys:
+        raise ValueError(f"nothing to alias in {target!r}")
+    conn.executemany(
         """INSERT INTO folder_aliases(folder, project) VALUES (?, ?)
            ON CONFLICT(folder) DO UPDATE SET project = excluded.project,
              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
-        (folder, normalize_name(project)),
+        [(k, normalize_name(project)) for k in keys],
     )
     return relabel_sessions(conn)
 
@@ -175,12 +222,31 @@ def set_alias(conn: sqlite3.Connection, folder_or_path: str, project: str) -> in
 def relabel_sessions(conn: sqlite3.Connection) -> int:
     aliases = load_aliases(conn)
     changed = 0
-    for sid, cwd, current in conn.execute(
-        "SELECT session_id, project_cwd, project FROM sessions WHERE project_cwd IS NOT NULL"
+    for sid, cwd, repo, root, current in conn.execute(
+        """SELECT session_id, project_cwd, repo, repo_root, project
+           FROM sessions WHERE project_cwd IS NOT NULL"""
     ).fetchall():
-        new = project_for(cwd, aliases)
+        new = project_for(cwd, aliases, repo, root)
         if new != current:
             conn.execute("UPDATE sessions SET project = ? WHERE session_id = ?", (new, sid))
             changed += 1
     conn.commit()
     return changed
+
+
+def resolve_repos(conn: sqlite3.Connection) -> int:
+    """Record the git repo of sessions not checked yet (once: the folder may vanish later),
+    then relabel. Returns how many sessions were checked."""
+    rows = conn.execute(
+        "SELECT session_id, project_cwd FROM sessions WHERE repo_root IS NULL AND project_cwd IS NOT NULL"
+    ).fetchall()
+    cache: dict[str, tuple] = {}
+    for sid, cwd in rows:
+        if cwd not in cache:
+            cache[cwd] = find_repo(cwd)
+        repo, root = cache[cwd]
+        conn.execute("UPDATE sessions SET repo = ?, repo_root = ? WHERE session_id = ?",
+                     (repo, root or "", sid))
+    if rows:
+        relabel_sessions(conn)
+    return len(rows)

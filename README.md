@@ -45,7 +45,7 @@ and shows you the result.**
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`regresion` finds `regresión`), ranked with BM25, with highlighted snippets. |
-| 📁 **Organized by project** | A project is its folder name, normalized — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn` automatically. Folder-name aliases handle the exceptions and are shared by all your computers. |
+| 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
 | 📝 **Lazy digests** | When Claude summarizes a project for you, it caches the summary; the next report only reads what happened since. Zero cost up front. |
@@ -238,9 +238,14 @@ mirror, so claude.ai sees the union of all of them.
   `<hostname>:<local id>`.
 - The first install on a new machine backfills that machine's existing transcripts (whatever
   Claude Code hasn't deleted yet) and uploads them.
-- **The same project adds up across machines.** Projects are named after the folder, not its
-  path, and aliases are keyed by folder name too (`leai-cli` → `devleaicli` wherever that
-  folder lives). Aliases sync both ways through Neon (last write wins), so one created at home
+- **The same project adds up across machines.** A session's project is decided, most specific
+  first, by: an alias on its git remote → an alias on any folder of its cwd (deepest first) →
+  the repo's name (from the remote, else the repo root folder) → the cwd's last folder. The
+  remote is read from `.git/config` (worktrees and submodules included, no `git` binary needed)
+  the first time a session is seen and then kept, even if the folder is deleted later. So a
+  clone named differently, or a session opened in `repo/src/deep`, still lands in the repo's
+  project. Aliases are keyed by folder name or remote (`leai-cli` → `devleaicli` wherever it
+  lives). Aliases sync both ways through Neon (last write wins), so one created at home
   relabels the work PC's sessions on its next sync — and vice versa.
 - A *session* belongs to one machine (Claude Code gives each conversation its own id); it's the
   *project* that collects sessions from every computer.
@@ -281,7 +286,9 @@ $Q project mlvsgnn                            # timeline + latest digest
 $Q save-digest project mlvsgnn <<'EOF'        # cache a distilled summary
 Goal… decisions… results… open issues…
 EOF
-$Q alias "Tareas asignaturas" tareasstats   # folder name (or a path) → project, any depth, all machines
+$Q alias "Tareas asignaturas" tareasstats   # folder name → project, any depth, all machines
+$Q alias git@github.com:me/leai-cli.git devleaicli   # git remote, any URL form
+$Q alias ~/Projects/leai-cli devleaicli       # existing path: its folder name + its repo's remote
 ```
 
 ```text
@@ -329,7 +336,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 34 tests, in-memory fixtures, < 1 s
+uv run pytest            # 49 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -337,6 +344,7 @@ brain/
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
+  gitrepo.py   repo root + normalized remote of a folder, straight from .git files
   query.py     search / sessions / projects / digests — library + CLI
   sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
   install.py   per-machine installer: skill, hooks, permission, backfill, first sync
@@ -368,8 +376,16 @@ reuse it as is.
 - [x] Several computers feeding one cloud mirror
 - [x] Share aliases across machines through Neon
 - [x] Windows support (exec-form hooks, both path styles) — awaiting a real-machine test
+- [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.5.0 — 2026-10-23
+- Projects follow git: sessions store their repo (`sessions.repo`, normalized remote) and the
+  repo's name becomes the default project, so subfolders and differently named clones merge.
+- Aliases can target a git remote (any URL form); aliasing an existing repo path covers both its
+  folder name and its remote. Remote credentials are never stored.
+- `ingest.py --full` re-checks folders that previously looked like non-repos.
 
 ### 0.4.0 — 2026-10-23
 - Aliases are keyed by **folder name** instead of absolute path (deepest matching folder wins),

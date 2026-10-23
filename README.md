@@ -373,6 +373,14 @@ project: whichever session triggers it, new messages from every project are arch
 pushed. Only what changed since the last run is read (~0.1 s). The installer's backfill is
 global too.
 
+Example — a computer with 5 projects:
+
+- `install.py` archives and uploads the existing sessions of **all 5** right away, before you
+  open Claude Code at all.
+- Afterwards you work in project A while a session of project B is still running in another
+  window: B's new messages go up with the next Claude reply, whether that reply is in A or in B.
+  No project waits for you to open it.
+
 </details>
 
 <details>

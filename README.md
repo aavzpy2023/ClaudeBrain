@@ -338,6 +338,10 @@ reuse it as is.
 
 ## 📜 Changelog
 
+### 0.2.1 — 2026-10-23
+- claude.ai connector URL now adds `category=querying`: 5 SQL tools instead of ~46 Neon
+  management tools, so "my projects" is answered from the archive, not with Neon projects.
+
 ### 0.2.0 — 2026-10-23
 - Neon Postgres mirror: incremental push (`brain/sync.py`), offline-safe, secret redaction.
 - `remote/schema.sql`: accent-insensitive FTS, `brain_*` SQL functions, read-only `brain_reader` role.

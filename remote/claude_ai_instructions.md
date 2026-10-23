@@ -7,12 +7,17 @@ Settings → Connectors → **Add custom connector**:
 - Name: `ClaudeBrain`
 - URL:
   ```
-  https://mcp.neon.tech/mcp?readonly=true&projectId=withered-leaf-14482462&roleName=brain_reader
+  https://mcp.neon.tech/mcp?readonly=true&category=querying&projectId=withered-leaf-14482462&roleName=brain_reader
   ```
 - Authorize your Neon account when asked; pick **read-only** if the consent screen offers it.
 
-`readonly=true` hides Neon's management tools, `projectId` scopes everything to the ClaudeBrain
+`category=querying` exposes only the SQL tools (`run_sql`, `inspect_database`, …) — without it
+the connector offers ~46 Neon management tools and Claude answers "my projects" with Neon
+projects. `readonly=true` drops write tools, `projectId` scopes everything to the ClaudeBrain
 project, and `roleName=brain_reader` makes every query run as a role that can only `SELECT`.
+
+Check what a URL exposes, no auth needed:
+`curl "https://mcp.neon.tech/api/list-tools?readonly=true&category=querying"`
 
 ## 2. Project instructions
 
@@ -20,6 +25,9 @@ Create a claude.ai Project called **Brain**, enable the ClaudeBrain connector in
 the block below as its instructions.
 
 ---
+
+In this project "project(s)" always means my archived work projects (folders I worked in),
+never Neon projects — Neon is only where the archive is stored. Answer by running SQL.
 
 You have read-only access to my archive of past Claude Code sessions (CLI and VS Code) through
 the Neon connector: project `withered-leaf-14482462`, database `neondb`. Use it whenever I ask

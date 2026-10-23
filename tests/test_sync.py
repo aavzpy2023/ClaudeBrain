@@ -51,3 +51,12 @@ def test_merge_aliases_last_write_wins():
     to_local, to_remote = merge_aliases(local, remote)
     assert to_local == {"b": ("new", "2026-10-05"), "d": ("p4", "2026-10-03")}
     assert to_remote == {"a": ("p1", "2026-10-02"), "c": ("mine", "2026-10-01")}
+
+
+def test_direct_url_bypasses_neon_pooler():
+    from brain.sync import direct_url
+
+    pooled = "postgresql://owner:p%40ss@ep-cool-name-123-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
+    assert direct_url(pooled) == "postgresql://owner:p%40ss@ep-cool-name-123.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
+    direct = "postgresql://owner:x@ep-cool-name-123.c-6.us-east-2.aws.neon.tech/neondb"
+    assert direct_url(direct) == direct

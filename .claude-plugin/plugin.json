@@ -1,7 +1,7 @@
 {
   "name": "brain",
   "displayName": "ClaudeBrain",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Long-term memory for Claude Code: every session archived into a local SQLite database, searchable by project and resumable. Optional cloud mirror readable from claude.ai.",
   "author": { "name": "aavzpy2023", "url": "https://github.com/aavzpy2023" },
   "homepage": "https://github.com/aavzpy2023/ClaudeBrain",

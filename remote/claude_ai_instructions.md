@@ -57,6 +57,12 @@ unless a function can't answer:
 | Cached summary of a project/session | `SELECT * FROM brain_digest('name');` |
 | Read a session (id prefix ok), paginate with the last `ts` | `SELECT * FROM brain_session('f1c3077a', 'after-ts-or-null', 200);` |
 
+Search syntax for `brain_search`: words are ANDed and each matches its variants
+(`regresiones` finds regresión/regression); `a OR b`, `"exact phrase"`, `-word` to exclude. Use
+2–3 distinctive words. **Before concluding something isn't there, search again with synonyms
+and in my other working language(s), joined with OR** — e.g. `rendimiento OR performance OR
+lento OR slow`. For conceptual questions start with the expanded form.
+
 Projects are named after git repos or folders, normalized (lowercase, no accents/symbols,
 leading year dropped); partial names work (`'gnn'`). Roles: `user`, `assistant`, `summary`
 (compaction summaries — dense, read them first).

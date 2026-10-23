@@ -3,8 +3,10 @@
 Usage: python3 brain/query.py <command> [options]   (see --help)
 """
 import argparse
+import re
 import sqlite3
 import sys
+import unicodedata
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -15,10 +17,70 @@ from brain.db import connect, load_aliases, normalize_name, set_alias
 DEFAULT_ROLES = ("user", "assistant", "summary")
 
 
+# Light, language-agnostic stemming for Spanish/English-style endings: strip the first suffix
+# that leaves at least STEM_MIN letters, then match by prefix, so 'regresiones', 'regresión' and
+# 'regression' all reach each other. Mirrored by brain_stem() in remote/schema.sql — keep in sync.
+STEM_SUFFIXES = (
+    "aciones", "imientos", "amientos", "iciones", "iones", "acion", "icion", "mente",
+    "ando", "iendo", "ados", "adas", "idos", "idas", "ings",
+    "ado", "ada", "ido", "ida", "ion", "ing", "es", "ar", "er", "ir", "ed", "s", "a", "e", "o",
+)
+STEM_MIN = 4
+PREFIX_MIN = 3  # shorter words match exactly: 'de'* would match half the archive
+_QUERY_TOKEN = re.compile(r'"[^"]*"|\S+')
+
+
+def stem(word: str) -> str:
+    for suffix in STEM_SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= STEM_MIN:
+            return word[: -len(suffix)]
+    return word
+
+
+def _words(text: str) -> list[str]:
+    """Lowercase, accent-free words, split like FTS5's unicode61 tokenizer does."""
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    plain = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return re.findall(r"[^\W_]+", plain)
+
+
+def _term(token: str) -> str | None:
+    if len(token) >= 2 and token[0] == token[-1] == '"':  # "exact phrase": no stemming
+        words = _words(token[1:-1])
+        return f'"{" ".join(words)}"' if words else None
+    words = _words(token)
+    if not words:
+        return None
+    words[-1] = stem(words[-1])
+    return f'"{" ".join(words)}"' + ("*" if len(words[-1]) >= PREFIX_MIN else "")
+
+
 def fts_query(text: str) -> str:
-    """Quote each term so user input never trips FTS5 syntax (implicit AND between terms)."""
-    terms = [t.replace('"', '""') for t in text.split()]
-    return " ".join(f'"{t}"' for t in terms if t)
+    """Search syntax → FTS5: words are ANDed and match their variants (stem + prefix);
+    `a OR b` for alternatives, "quoted" for an exact phrase, -word to exclude.
+    Every term is quoted, so no input can produce an FTS5 syntax error."""
+    groups: list[list[str]] = []
+    excluded: list[str] = []
+    join_next = False
+    for token in _QUERY_TOKEN.findall(text):
+        if token == "OR":
+            join_next = bool(groups)
+            continue
+        negate = token.startswith("-") and len(token) > 1
+        term = _term(token[1:] if negate else token)
+        if term is None:
+            continue
+        if negate:
+            excluded.append(term)
+        elif join_next:
+            groups[-1].append(term)
+        else:
+            groups.append([term])
+        join_next = False
+    if not groups:
+        return ""
+    expr = " AND ".join(g[0] if len(g) == 1 else "(" + " OR ".join(g) + ")" for g in groups)
+    return expr + "".join(f" NOT {t}" for t in excluded)
 
 
 def search(
@@ -39,7 +101,10 @@ def search(
         JOIN messages m ON m.rowid = messages_fts.rowid
         JOIN sessions s ON s.session_id = m.session_id
         WHERE messages_fts MATCH ? AND m.role IN ({})""".format(",".join("?" * len(roles)))
-    params: list = [q if raw else fts_query(q), *roles]
+    match = q if raw else fts_query(q)
+    if not match:
+        return []
+    params: list = [match, *roles]
     if project:
         sql += " AND s.project = ?"
         params.append(resolve_project(conn, project))

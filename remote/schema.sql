@@ -8,6 +8,13 @@ CREATE OR REPLACE FUNCTION brain_unaccent(text) RETURNS text
 LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
 AS $$ SELECT public.unaccent('public.unaccent'::regdictionary, $1) $$;
 
+-- Postgres' parser keeps paths, URLs, hosts and hyphenated words as single tokens, so
+-- '/home/me/paper_downloader/' would never match 'downloader'. Splitting on those separators
+-- makes it tokenize like the local FTS5 index (unicode61), for documents and queries alike.
+CREATE OR REPLACE FUNCTION brain_plain(text) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+AS $$ SELECT regexp_replace(brain_unaccent(lower($1)), '[/\\.:@#?=&+~-]+', ' ', 'g') $$;
+
 CREATE TABLE IF NOT EXISTS sessions (
     session_id  text PRIMARY KEY,
     project     text,
@@ -32,8 +39,19 @@ CREATE TABLE IF NOT EXISTS messages (
     is_sidechain integer NOT NULL DEFAULT 0,
     text         text NOT NULL,
     -- 'simple' + unaccent mirrors the local FTS5 tokenizer: no stemming, accent-insensitive.
-    tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', brain_unaccent(text))) STORED
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', brain_plain(text))) STORED
 );
+-- Upgrade from ≤0.7.0, whose index didn't split paths/URLs: rebuild the derived column.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+                   WHERE d.adrelid = 'messages'::regclass AND a.attname = 'tsv'
+                     AND pg_get_expr(d.adbin, d.adrelid) LIKE '%brain_plain%') THEN
+        ALTER TABLE messages DROP COLUMN tsv;
+        ALTER TABLE messages ADD COLUMN tsv tsvector
+            GENERATED ALWAYS AS (to_tsvector('simple', brain_plain(text))) STORED;
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS messages_session ON messages (session_id, ts);
 CREATE INDEX IF NOT EXISTS messages_tsv ON messages USING gin (tsv);
 
@@ -69,6 +87,66 @@ CREATE TABLE IF NOT EXISTS aliases (
 
 -- Query API for claude.ai: `SELECT * FROM brain_xxx(...)`. Project names match partially.
 
+-- Search syntax shared with the local CLI (brain/query.py::fts_query): words are ANDed and
+-- match their variants (light stem + prefix), `a OR b`, "exact phrase", -exclude.
+-- Keep STEM_SUFFIXES / STEM_MIN / PREFIX_MIN identical to brain/query.py.
+CREATE OR REPLACE FUNCTION brain_stem(w text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+DECLARE suffix text;
+BEGIN
+    FOREACH suffix IN ARRAY ARRAY['aciones', 'imientos', 'amientos', 'iciones', 'iones', 'acion', 'icion', 'mente', 'ando', 'iendo', 'ados', 'adas', 'idos', 'idas', 'ings', 'ado', 'ada', 'ido', 'ida', 'ion', 'ing', 'es', 'ar', 'er', 'ir', 'ed', 's', 'a', 'e', 'o'] LOOP
+        IF right(w, length(suffix)) = suffix AND length(w) - length(suffix) >= 4 THEN
+            RETURN left(w, length(w) - length(suffix));
+        END IF;
+    END LOOP;
+    RETURN w;
+END $$;
+
+CREATE OR REPLACE FUNCTION brain_tsquery(q text) RETURNS tsquery
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    token text; negate boolean; phrase boolean; join_next boolean := false;
+    parts text[]; kinds int[]; n int; term text;
+    groups text[] := '{}'; excluded text[] := '{}'; expr text;
+BEGIN
+    FOR token IN SELECT m[1] FROM regexp_matches(coalesce(q, ''), '("[^"]*"|\S+)', 'g') AS m LOOP
+        IF token = 'OR' THEN
+            join_next := cardinality(groups) > 0;
+            CONTINUE;
+        END IF;
+        negate := left(token, 1) = '-' AND length(token) > 1;
+        IF negate THEN token := substr(token, 2); END IF;
+        phrase := length(token) >= 2 AND left(token, 1) = '"' AND right(token, 1) = '"';
+        IF phrase THEN token := substr(token, 2, length(token) - 2); END IF;
+        -- Tokenize like to_tsvector does; drop blanks (12) and hyphenated-word parts (9-11),
+        -- whose whole compound is indexed too.
+        SELECT array_agg(t.token ORDER BY t.ord), array_agg(t.tokid ORDER BY t.ord)
+          INTO parts, kinds
+          FROM ts_parse('default', brain_plain(token)) WITH ORDINALITY AS t(tokid, token, ord)
+         WHERE t.tokid NOT IN (9, 10, 11, 12);
+        IF parts IS NULL THEN CONTINUE; END IF;
+        n := cardinality(parts);
+        IF NOT phrase AND kinds[n] IN (1, 2) THEN parts[n] := brain_stem(parts[n]); END IF;
+        SELECT string_agg(quote_literal(x), ' <-> ' ORDER BY i) INTO term
+          FROM unnest(parts) WITH ORDINALITY AS u(x, i);
+        IF NOT phrase AND length(parts[n]) >= 3 THEN term := term || ':*'; END IF;
+        IF negate THEN
+            excluded := excluded || term;
+        ELSIF join_next THEN
+            groups[cardinality(groups)] := groups[cardinality(groups)] || ' | ' || term;
+        ELSE
+            groups := groups || term;
+        END IF;
+        join_next := false;
+    END LOOP;
+    IF cardinality(groups) = 0 THEN RETURN NULL; END IF;
+    SELECT string_agg('(' || g || ')', ' & ') INTO expr FROM unnest(groups) AS g;
+    IF cardinality(excluded) > 0 THEN
+        SELECT expr || string_agg(' & !(' || x || ')', '') INTO expr FROM unnest(excluded) AS x;
+    END IF;
+    RETURN expr::tsquery;
+END $$;
+
 CREATE OR REPLACE FUNCTION brain_projects()
 RETURNS TABLE (project text, sessions bigint, messages bigint, last_ts text, folders text)
 LANGUAGE sql STABLE AS $$
@@ -93,7 +171,7 @@ CREATE OR REPLACE FUNCTION brain_search(q text, p_project text DEFAULT NULL,
 RETURNS TABLE (ts text, project text, entrypoint text, session_id text, title text,
                role text, snippet text)
 LANGUAGE sql STABLE AS $$
-    WITH query AS (SELECT websearch_to_tsquery('simple', brain_unaccent(q)) AS tq)
+    WITH query AS (SELECT brain_tsquery(q) AS tq)
     SELECT m.ts, s.project, m.entrypoint, m.session_id, s.title, m.role,
            ts_headline('simple', brain_unaccent(m.text), query.tq,
                        'StartSel=[, StopSel=], MaxWords=35, MinWords=12, MaxFragments=2')

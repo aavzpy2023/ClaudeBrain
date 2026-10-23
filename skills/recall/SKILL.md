@@ -36,8 +36,20 @@ and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
 Sources (`--source`): `cli`, `claude-vscode`, `claude-desktop` (Claude Code) and `claude-ai`
 (chats imported from the claude.ai export: web, Desktop app, mobile).
 
-`search` terms are ANDed, accent-insensitive. By default only user/assistant/summary messages
-are searched and shown; `--tools` adds tool calls and (truncated) tool output. `summary`
+## Search syntax — and how to search well
+
+- Words are ANDed and each matches its **variants**: `regresiones` finds regresión/regresion/
+  regression, `descargar` finds descarga/descargado. Accents and case don't matter.
+- `a OR b` for alternatives, `"exact phrase"`, `-word` to exclude (per message).
+- Use 2–3 **distinctive** words; drop generic ones (problem, issue, code, project).
+- **Expand before concluding "not found".** The archive holds whatever language(s) the user
+  worked in, and the user may describe things differently than they were written. If results
+  are few or off-topic, search again with synonyms **and in the user's other working
+  language(s)**, joined with OR — e.g. `rendimiento OR performance OR lento OR slow`,
+  `descargar OR download`. For conceptual questions ("when did we have speed problems?"),
+  start expanded. Session titles (in `recent`/`project` output) also help locate work.
+
+By default only user/assistant/summary messages are searched and shown; `--tools` adds tool calls and (truncated) tool output. `summary`
 messages are Claude Code's own compaction/recap summaries — dense, good starting points.
 
 ## Workflows

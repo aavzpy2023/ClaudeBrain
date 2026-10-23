@@ -76,3 +76,23 @@ def test_ambiguous_or_missing_project(loaded):
         query.resolve_project(loaded, "gnn")
     with pytest.raises(LookupError, match="no project"):
         query.resolve_project(loaded, "nothing")
+
+
+def test_fts_query_syntax():
+    q = query.fts_query
+    assert q("regresiones") == q("regresión") == q("regresion") == '"regres"*'
+    assert q("descargar") == q("descarga") == '"descarg"*'
+    assert q("rendimiento OR performance OR lento") == '("rendimient"* OR "performanc"* OR "lent"*)'
+    assert q('"Paper Downloader" -flask') == '"paper downloader" NOT "flask"*'
+    assert q("papers.sqlite") == '"papers sqlit"*'
+    assert q("de datos") == '"de" AND "dato"*'  # short words match exactly
+    assert q("OR -") == "" and q("") == ""
+
+
+def test_variants_and_alternatives_find_more(loaded):
+    # 'regresión' in one session, 'regresion' in another: both reached from the plural form
+    assert {h["session_id"] for h in query.search(loaded, "regresiones")} == {SID, SID2}
+    assert {h["session_id"] for h in query.search(loaded, "GraphSAGE OR AUC")} == {SID, SID2}
+    # exclusions apply per message: the only 'logistica' message also says 'revisa'
+    assert query.search(loaded, "logistica") and query.search(loaded, "logistica -revisa") == []
+    assert query.search(loaded, "OR") == []

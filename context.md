@@ -55,6 +55,14 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   the repo/plugin folder. `remote/claude_ai_instructions.md` is a template (`{{NEON_PROJECT_ID}}`)
   rendered by `sync.py --claude-ai`; no personal ids in the repo.
   Files: `brain/sync.py::redact`, `brain/sync.py::uv_command`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
+- **Search syntax is implemented twice and must stay identical.** Local `fts_query` (FTS5) and
+  Neon `brain_tsquery` (plpgsql): words ANDed, last word of each term stemmed (`STEM_SUFFIXES`,
+  remainder ≥ `STEM_MIN`) and prefix-matched (≥ `PREFIX_MIN` letters), `OR`, "phrase", -exclude.
+  Neon indexes `brain_plain(text)` (unaccent + lower + paths/URLs/hyphens split) so its tokens
+  match unicode61's. Verify parity by comparing hit counts on real data after any change.
+  Diagnostics against Neon must use `SET LOCAL ROLE` inside a transaction — the pooled endpoint
+  leaks session `SET ROLE` to other clients (sync itself uses the direct endpoint).
+  Files: `brain/query.py::fts_query`, `brain/query.py::stem`, `remote/schema.sql`, `brain/sync.py::direct_url`
 - **claude.ai importer.** Official export → sessions with entrypoint `claude-ai`, session id =
   conversation uuid, message uuid kept (`<conv>:<i>` if missing), `INSERT OR IGNORE` so re-imports
   only add. Pseudo cwd `claude.ai/<Project name>` (or `claude.ai`) + `repo_root=''` lets

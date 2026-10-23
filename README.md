@@ -45,7 +45,7 @@ and shows you the result.**
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
-| 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`naive` finds `naïve`, `cafe` finds `café`), ranked with BM25, with highlighted snippets. |
+| 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
@@ -316,6 +316,8 @@ $Q status                                     # what's archived, pending sync, r
 $Q projects                                   # all projects, sessions, last activity
 $Q recent --project thesis --limit 5          # latest sessions (partial names work)
 $Q search "graphsage naive bayes" --since 2026-10-01
+$Q search 'rendimiento OR performance OR slow -benchmark'   # alternatives, exclusion
+$Q search '"paper downloader"'               # exact phrase
 $Q session f1c3077a --max-chars 8000          # condensed transcript (id prefix works)
 $Q session f1c3077a --after 2026-10-19T12:12:45Z   # next page
 $Q project mlvsgnn                            # timeline + latest digest
@@ -411,7 +413,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 62 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 65 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -517,7 +519,9 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] **claude.ai importer** — the official data export (`conversations.json`) for non-Code chats
 - [x] Importer validated against a real export (Oct 2026: 51 chats, 924 messages)
 - [ ] Assign imported claude.ai chats to projects (the export has no chat→project link)
+- [x] Word variants (light stemming + prefix), `OR` / phrases / exclusions, identical locally and in Neon
 - [ ] CJK-aware search (FTS5 `trigram` tokenizer / Postgres `pg_trgm`) for Chinese, Japanese, Korean
+- [ ] Optional semantic search (embeddings) for Claude Code
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Claude Code plugin + marketplace (local by default, cloud opt-in)
@@ -528,6 +532,16 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.8.0
+- Better search, the same locally and in Neon: each word matches its variants (light
+  Spanish/English-style stemming + prefix), `a OR b`, `"exact phrase"`, `-exclude`; any input is
+  safe. Neon now splits paths, URLs and hyphenated words like the local index, so both return
+  identical results.
+- The skill and the claude.ai instructions tell Claude to widen searches with synonyms and the
+  user's other languages before concluding something isn't there.
+- Sync always connects to Neon's direct endpoint: through the pooled one, session state such as
+  `SET ROLE` can leak between clients.
 
 ### 0.7.0
 - **Claude Code plugin**: `/plugin install brain --marketplace aavzpy2023/ClaudeBrain` installs
@@ -610,6 +624,10 @@ repo (same remote) or the same aliased folder end up under one project name.
   as is; the cloud mirror gets a redacted copy, but redaction is pattern-based — an unusual
   secret format can slip through.
 - From claude.ai the brain is read-only for now: summaries can only be saved from Claude Code.
+- **No semantic search.** Search matches words and their variants, not meaning: "speed
+  problems" won't find "it's very slow" unless Claude expands the query (it's told to, with
+  synonyms and your other languages). Embeddings would need a model and wouldn't work from
+  claude.ai, so they're left as an optional idea.
 - **Chinese, Japanese and Korean search is weak.** Both SQLite FTS5 (`unicode61`) and Postgres
   (`simple`) split words on spaces and punctuation; CJK text has none, so a whole sentence
   becomes one token and a word inside it isn't found (a word at the start of a sentence still

@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -63,6 +64,17 @@ def env_value(key: str, env_file: Path | None = None) -> str | None:
 
 def neon_url(env_file: Path | None = None) -> str | None:
     return env_value("NEON_URL", env_file)
+
+
+def direct_url(url: str) -> str:
+    """Neon's pooled endpoint (host 'ep-…-pooler.…') runs PgBouncer in transaction mode: session
+    state such as SET ROLE leaks to whoever reuses the server connection next. A short-lived sync
+    needs no pooling, so always connect to the direct endpoint."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if "-pooler." not in host:
+        return url
+    return urlunsplit(parts._replace(netloc=parts.netloc.replace(host, host.replace("-pooler.", ".", 1))))
 
 
 def find_uv() -> str | None:
@@ -241,7 +253,7 @@ def main(argv=None) -> None:
 
     started = time.monotonic()
     try:
-        remote = psycopg.connect(url, connect_timeout=10)
+        remote = psycopg.connect(direct_url(url), connect_timeout=10)
     except psycopg.OperationalError as exc:
         # Offline is normal: the watermarks stay put and the next run catches up.
         if not args.quiet:

@@ -68,15 +68,16 @@ flowchart LR
 
     CLI & VS & DK -->|write| JSONL[("~/.claude/projects/**/*.jsonl")]
 
-    JSONL -->|"Stop hook (async, every reply)<br/>SessionEnd hook (fallback)"| ING["brain/ingest.py<br/>incremental · idempotent"]
+    JSONL -->|"Stop hook (async, every reply)<br/>SessionEnd hook (fallback)"| ING["brain/hook.py → ingest.py<br/>incremental · idempotent · git-aware"]
     ING --> DB[("🧠 brain.db<br/>SQLite + FTS5")]
+    EXPORT(["📦 claude.ai data export"]) -->|"brain/importer.py (by hand)"| DB
 
     YOU(["🙋 You: '¿qué decidimos sobre X?'"]) --> SKILL["claude-brain skill"]
     SKILL -->|"brain/query.py"| DB
     DB --> ANS(["📄 Answer · report · resume command"])
     SKILL -.->|save-digest| DB
 
-    DB -->|"brain/sync.py (async, when online)<br/>secrets redacted"| NEON[("☁️ Neon Postgres")]
+    DB <-->|"brain/sync.py (after each ingest, when online)<br/>secrets redacted · aliases both ways"| NEON[("☁️ Neon Postgres")]
     PHONE(["📱 claude.ai web / mobile"]) -->|"Neon MCP connector<br/>read-only · brain_reader"| NEON
 ```
 
@@ -97,26 +98,34 @@ and the workflows (search → read, project → digest → report, find → resu
 | `tool` | Tool calls (input truncated to 300 chars) and results (truncated to 200 chars) | `--tools` |
 
 Dropped entirely: thinking blocks, meta messages, task notifications, API bookkeeping, images.
+Imported claude.ai chats use the same roles (their conversation `summary`, when present, as `summary`).
 Subagent messages are kept but flagged (`--sidechain` to include them).
 
 ### Data model
 
 ```mermaid
 erDiagram
-    PROJECT ||--o{ SESSION : "folder name (or alias)"
+    PROJECT ||--o{ SESSION : "git remote, folder name or alias"
     SESSION ||--o{ MESSAGE : contains
     PROJECT ||--o{ DIGEST : "summarized by"
     SESSION ||--o{ DIGEST : "summarized by"
+    ALIAS }o--|| PROJECT : "renames"
 
     SESSION {
         text session_id PK
         text project
         text project_cwd
-        text entrypoint "cli | claude-vscode | claude-desktop"
+        text entrypoint "cli | claude-vscode | claude-desktop | claude-ai"
         text title "AI title, or your /rename"
         text first_ts
         text last_ts
         int  msg_count
+        text repo "normalized git remote, if any"
+    }
+    ALIAS {
+        text folder PK "folder name or git remote"
+        text project
+        text updated_at "last write wins across machines"
     }
     MESSAGE {
         text uuid PK
@@ -214,11 +223,13 @@ read-only transactions (`readonly=true`) and with only Neon's SQL tools exposed
 **Only your computers write; claude.ai only reads.**
 
 ```
-every Claude reply (Stop hook, background)
+every Claude reply (Stop hook → hook.py, background)
    ├─ ingest.py → local brain.db          always, offline too
-   └─ sync.py   → Neon                    only new rows, only when online
-closing a session (SessionEnd hook)
+   └─ sync.py   ⇄ Neon                    new rows up, aliases both ways; only when online
+closing a session (SessionEnd hook → hook.py)
    └─ ingest.py → local brain.db          (its last messages reach Neon with the next reply)
+you, from time to time
+   └─ importer.py → local brain.db        claude.ai chats; reach Neon with the next sync
 ```
 
 - `sync.py` connects with the owner string in `~/.config/claude-brain/.env` — the only
@@ -356,6 +367,8 @@ python3 brain/importer.py ~/Downloads             # import; only the export's zi
 | Variable / file | Default | Purpose |
 |---|---|---|
 | `CLAUDE_BRAIN_DB` | `~/.local/share/claude-brain/brain.db` | Database location |
+| `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's folder: transcripts, settings, skills |
+| `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror |
 | `ingest.py --root` | `~/.claude/projects` | Where transcripts are read from |
 | `ingest.py --full` | off | Re-read every file from the start (safe: deduplicated) |
 | `~/.local/share/claude-brain/ingest.log` | — | Hook errors end up here |

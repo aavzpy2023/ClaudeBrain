@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -74,6 +75,13 @@ CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value INTEGER NOT NULL
 );
+
+-- Keyed by normalized folder name, not path, so one alias holds on every machine (and syncs).
+CREATE TABLE IF NOT EXISTS folder_aliases (
+    folder     TEXT PRIMARY KEY,
+    project    TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
 """
 
 
@@ -90,7 +98,22 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(SCHEMA)
+    _migrate_path_aliases(conn)
     return conn
+
+
+def _migrate_path_aliases(conn: sqlite3.Connection) -> None:
+    # 0.3.x stored aliases by absolute path prefix (project_aliases); keep the table, copy forward.
+    if conn.execute("SELECT 1 FROM folder_aliases LIMIT 1").fetchone():
+        return
+    rows = conn.execute("SELECT path_prefix, project FROM project_aliases").fetchall()
+    for prefix, project in rows:
+        folder = folder_key(prefix)
+        if folder:
+            conn.execute("INSERT OR IGNORE INTO folder_aliases(folder, project) VALUES (?, ?)",
+                         (folder, project))
+    if rows:
+        conn.commit()
 
 
 def normalize_name(name: str) -> str:
@@ -104,23 +127,60 @@ def normalize_name(name: str) -> str:
     return re.sub(r"^(19|20)\d{2}(?=[a-z])", "", flat) or flat
 
 
-def project_for(cwd: str | None, aliases: list[tuple[str, str]]) -> str:
-    """Project name for a cwd: longest matching alias prefix, else the folder's normalized name.
+def path_parts(path: str) -> list[str]:
+    """Folder names of a POSIX or Windows path, whatever OS recorded or reads it."""
+    return [p for p in re.split(r"[\\/]+", path) if p and not re.fullmatch(r"[A-Za-z]:", p)]
 
-    `aliases` must be sorted by prefix length, longest first.
-    """
+
+def folder_key(path_or_name: str) -> str:
+    """Alias key: the normalized last folder name of a path, or of a bare folder name."""
+    parts = path_parts(path_or_name)
+    return normalize_name(parts[-1]) if parts else ""
+
+
+def project_for(cwd: str | None, aliases: dict[str, str]) -> str:
+    """Project for a cwd: the deepest folder with an alias, else the last folder's normalized name."""
     if not cwd:
         return "unknown"
-    cwd = cwd.rstrip("/") or "/"
-    for prefix, project in aliases:
-        if cwd == prefix or cwd.startswith(prefix + "/"):
+    parts = path_parts(cwd)
+    for part in reversed(parts):
+        project = aliases.get(normalize_name(part))
+        if project:
             return project
     # Headless runs in throwaway temp dirs would otherwise each become a "project".
-    if cwd == "/tmp" or cwd.startswith("/tmp/"):
+    temp = path_parts(tempfile.gettempdir())
+    if (parts[:1] == ["tmp"] and cwd.startswith("/")) or (temp and parts[: len(temp)] == temp):
         return "tmp"
-    return normalize_name(Path(cwd).name) or "root"
+    return normalize_name(parts[-1]) if parts else "root"
 
 
-def load_aliases(conn: sqlite3.Connection) -> list[tuple[str, str]]:
-    rows = conn.execute("SELECT path_prefix, project FROM project_aliases").fetchall()
-    return sorted(((r[0], r[1]) for r in rows), key=lambda a: len(a[0]), reverse=True)
+def load_aliases(conn: sqlite3.Connection) -> dict[str, str]:
+    return {r[0]: r[1] for r in conn.execute("SELECT folder, project FROM folder_aliases")}
+
+
+def set_alias(conn: sqlite3.Connection, folder_or_path: str, project: str) -> int:
+    """Map a folder name (any depth, any machine) to a project; returns sessions relabelled."""
+    folder = folder_key(folder_or_path)
+    if not folder:
+        raise ValueError(f"no folder name in {folder_or_path!r}")
+    conn.execute(
+        """INSERT INTO folder_aliases(folder, project) VALUES (?, ?)
+           ON CONFLICT(folder) DO UPDATE SET project = excluded.project,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
+        (folder, normalize_name(project)),
+    )
+    return relabel_sessions(conn)
+
+
+def relabel_sessions(conn: sqlite3.Connection) -> int:
+    aliases = load_aliases(conn)
+    changed = 0
+    for sid, cwd, current in conn.execute(
+        "SELECT session_id, project_cwd, project FROM sessions WHERE project_cwd IS NOT NULL"
+    ).fetchall():
+        new = project_for(cwd, aliases)
+        if new != current:
+            conn.execute("UPDATE sessions SET project = ? WHERE session_id = ?", (new, sid))
+            changed += 1
+    conn.commit()
+    return changed

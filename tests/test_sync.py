@@ -41,3 +41,13 @@ def test_neon_url_from_env_file(tmp_path, monkeypatch):
     assert neon_url(tmp_path / "missing") is None
     monkeypatch.setenv("NEON_URL", "postgresql://env")
     assert neon_url(env) == "postgresql://env"
+
+
+def test_merge_aliases_last_write_wins():
+    from brain.sync import merge_aliases
+
+    local = {"a": ("p1", "2026-10-02"), "b": ("old", "2026-10-01"), "c": ("mine", "2026-10-01")}
+    remote = {"b": ("new", "2026-10-05"), "c": ("theirs", "2026-09-01"), "d": ("p4", "2026-10-03")}
+    to_local, to_remote = merge_aliases(local, remote)
+    assert to_local == {"b": ("new", "2026-10-05"), "d": ("p4", "2026-10-03")}
+    assert to_remote == {"a": ("p1", "2026-10-02"), "c": ("mine", "2026-10-01")}

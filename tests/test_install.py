@@ -18,15 +18,26 @@ OLD_MANUAL_INSTALL = {
 
 
 def _cmds(uv="/usr/bin/uv"):
-    return install.commands("/usr/bin/python3", Path("/home/u/My Code/ClaudeBrain"), Path("/home/u/log"), uv)
+    return install.commands("/usr/bin/python3", Path("/home/u/My Code/ClaudeBrain"), uv)
 
 
-def test_commands_quote_paths_with_spaces():
+def test_hooks_use_exec_form_without_shell():
     cmds = _cmds()
-    assert "'/home/u/My Code/ClaudeBrain/brain/ingest.py'" in cmds["stop"]
-    assert "sync.py" in cmds["stop"] and "sync.py" not in cmds["session_end"]
+    assert cmds["stop"]["command"] == "/usr/bin/python3"
+    assert cmds["stop"]["args"] == ["/home/u/My Code/ClaudeBrain/brain/hook.py", "--sync", "--uv", "/usr/bin/uv"]
+    assert cmds["stop"]["async"] is True
+    assert cmds["session_end"]["args"] == ["/home/u/My Code/ClaudeBrain/brain/hook.py"]
+    assert "--sync" not in _cmds(uv=None)["stop"]["args"]
     assert cmds["query"] == "/usr/bin/python3 '/home/u/My Code/ClaudeBrain/brain/query.py'"
-    assert "sync.py" not in _cmds(uv=None)["stop"]
+
+
+def test_windows_paths_become_forward_slashes():
+    from pathlib import PureWindowsPath
+    cmds = install.commands(PureWindowsPath(r"C:\Python312\python.exe"),
+                            PureWindowsPath(r"C:\Users\A\ClaudeBrain"), None)
+    assert cmds["stop"]["command"] == "C:/Python312/python.exe"
+    assert cmds["stop"]["args"] == ["C:/Users/A/ClaudeBrain/brain/hook.py"]
+    assert cmds["query"] == "C:/Python312/python.exe C:/Users/A/ClaudeBrain/brain/query.py"
 
 
 def test_merge_replaces_previous_install_and_keeps_everything_else():
@@ -38,10 +49,10 @@ def test_merge_replaces_previous_install_and_keeps_everything_else():
     assert out["cleanupPeriodDays"] == install.RETENTION_DAYS
     assert out["hooks"]["PostToolUse"] == OLD_MANUAL_INSTALL["hooks"]["PostToolUse"]
 
-    stop_cmds = [h["command"] for g in out["hooks"]["Stop"] for h in g["hooks"]]
-    assert "notify-send done" in stop_cmds
-    assert not any("/old/brain/ingest.py" in c for c in stop_cmds)
-    assert sum("brain/ingest.py" in c for c in stop_cmds) == 1
+    stop_hooks = [h for g in out["hooks"]["Stop"] for h in g["hooks"]]
+    assert {"type": "command", "command": "notify-send done"} in stop_hooks
+    assert not any("/old/brain/ingest.py" in h["command"] for h in stop_hooks)
+    assert sum(install._is_ours(h) for h in stop_hooks) == 1
     assert out["hooks"]["Stop"][-1]["hooks"][0]["async"] is True
     assert len(out["hooks"]["SessionEnd"]) == 1
 

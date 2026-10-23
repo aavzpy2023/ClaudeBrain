@@ -29,7 +29,7 @@ year dropped): `2026-ML vs GNN` and `MLvsGNN` are both `mlvsgnn`. Partial names 
 | Read one session (condensed) | `B session <id-prefix> [--after TS] [--max-chars N] [--tools]` |
 | Project timeline + latest digest | `B project P [--since DATE]` |
 | Cache a distilled summary | `B save-digest project P <<'EOF'` … `EOF` (or `session <id>`) |
-| Group/rename folders | `B alias <folder-path> <name>`; no args lists aliases |
+| Group/rename folders | `B alias <folder name or path> <name>` — applies to that folder name at any depth, on every machine (synced); no args lists aliases |
 
 `search` terms are ANDed, accent-insensitive. By default only user/assistant/summary messages
 are searched and shown; `--tools` adds tool calls and (truncated) tool output. `summary`

@@ -16,40 +16,43 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import db_path
 from brain.sync import neon_url
 
 REPO = Path(__file__).resolve().parent.parent
 PLACEHOLDER = "{{BRAIN_QUERY}}"
-# Substrings that identify hooks/rules written by any previous install of ClaudeBrain.
-OUR_HOOK_MARK = "brain/ingest.py"
+# Substrings that identify hooks/rules written by any previous install (shell or exec form).
+OUR_HOOK_MARKS = ("brain/ingest.py", "brain/hook.py")
 OUR_RULE_MARK = "brain/query.py"
 RETENTION_DAYS = 3650
 
 
-def commands(python: str, repo: Path, log: Path, uv: str | None) -> dict:
-    q = shlex.quote
-    ingest = f"{q(python)} {q(str(repo / 'brain' / 'ingest.py'))} --quiet 2>>{q(str(log))}"
-    stop = ingest
-    if uv:
-        stop += (f"; {q(uv)} run --quiet --project {q(str(repo))} "
-                 f"{q(str(repo / 'brain' / 'sync.py'))} --quiet 2>>{q(str(log))}")
-    query = f"{q(python)} {q(str(repo / 'brain' / 'query.py'))}"
-    return {"stop": stop + " || true", "session_end": ingest + " || true", "query": query}
+def _posix(path) -> str:
+    # Forward slashes work in Git Bash (Claude Code's shell on Windows) and need no escaping.
+    return Path(path).as_posix()
+
+
+def commands(python: str, repo: Path, uv: str | None) -> dict:
+    """Hooks use exec form (command + args, no shell) so the same entry works on every OS."""
+    hook = _posix(repo / "brain" / "hook.py")
+    stop_args = [hook] + (["--sync", "--uv", _posix(uv)] if uv else [])
+    return {
+        "stop": {"type": "command", "command": _posix(python), "args": stop_args,
+                 "timeout": 120, "async": True},
+        "session_end": {"type": "command", "command": _posix(python), "args": [hook], "timeout": 120},
+        "query": f"{shlex.quote(_posix(python))} {shlex.quote(_posix(repo / 'brain' / 'query.py'))}",
+    }
+
+
+def _is_ours(hook: dict) -> bool:
+    text = " ".join([hook.get("command", ""), *hook.get("args", [])])
+    return any(mark in text for mark in OUR_HOOK_MARKS)
 
 
 def merge_settings(settings: dict, cmds: dict) -> dict:
     """Return settings with ClaudeBrain's hooks, permission and retention set; others untouched."""
     hooks = settings.setdefault("hooks", {})
-    wanted = {
-        "Stop": {"type": "command", "command": cmds["stop"], "timeout": 120, "async": True},
-        "SessionEnd": {"type": "command", "command": cmds["session_end"], "timeout": 120},
-    }
-    for event, hook in wanted.items():
-        groups = [
-            g for g in hooks.get(event, [])
-            if not any(OUR_HOOK_MARK in h.get("command", "") for h in g.get("hooks", []))
-        ]
+    for event, hook in (("Stop", cmds["stop"]), ("SessionEnd", cmds["session_end"])):
+        groups = [g for g in hooks.get(event, []) if not any(_is_ours(h) for h in g.get("hooks", []))]
         groups.append({"hooks": [hook]})
         hooks[event] = groups
 
@@ -85,13 +88,11 @@ def main(argv=None) -> None:
 
     check_fts5()
     claude_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-    log = db_path().parent / "ingest.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
     has_neon = neon_url() is not None
     uv = shutil.which("uv") if has_neon else None
     if has_neon and not uv:
         print("warning: NEON_URL is set but uv is not installed; cloud sync disabled")
-    cmds = commands(sys.executable, REPO, log, uv)
+    cmds = commands(sys.executable, REPO, uv)
 
     skill = install_skill(claude_dir / "skills", cmds["query"])
     print(f"skill      → {skill}")

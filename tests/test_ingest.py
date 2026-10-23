@@ -82,14 +82,42 @@ def test_sidechain_messages_flagged_and_not_counted(conn, root):
 
 
 def test_project_for_rules():
-    assert project_for("/a/ML-vs-GNN", []) == project_for("/b/MLvsGNN/", []) == "mlvsgnn"
-    assert project_for("/a/Tésis_Doctoral", []) == "tesisdoctoral"
-    assert project_for("/d/2026-ML vs GNN", []) == "mlvsgnn"
-    assert project_for("/d/20 ctubre 2026", []) == "20ctubre2026"
-    assert project_for("/d/2026", []) == "2026"
-    assert project_for("/tmp/tmpab12", []) == "tmp"
-    aliases = [("/a/x/sub", "deep"), ("/a/x", "shallow")]
-    assert project_for("/a/x/sub/more", aliases) == "deep"
-    assert project_for("/a/x/other", aliases) == "shallow"
-    assert project_for("/a/xy", aliases) == "xy"
-    assert project_for(CWD, []) == "mlvsgnn"
+    assert project_for("/a/ML-vs-GNN", {}) == project_for("/b/MLvsGNN/", {}) == "mlvsgnn"
+    assert project_for("/d/2026-ML vs GNN", {}) == "mlvsgnn"
+    assert project_for("/d/20 ctubre 2026", {}) == "20ctubre2026"
+    assert project_for("/d/2026", {}) == "2026"
+    assert project_for("/a/Tésis_Doctoral", {}) == "tesisdoctoral"
+    assert project_for("/tmp/tmpab12", {}) == "tmp"
+    assert project_for(CWD, {}) == "mlvsgnn"
+
+
+def test_aliases_match_folder_names_at_any_depth_deepest_wins():
+    aliases = {"tareasasignaturas": "tareasstats", "tarea1": "estadistica"}
+    assert project_for("/home/a/Dropbox/Tareas asignaturas/Sem 2/X", aliases) == "tareasstats"
+    assert project_for("/home/a/Dropbox/Tareas asignaturas/Sem 2/Tarea 1/sections", aliases) == "estadistica"
+    # Same folder name on another machine, different home: same project.
+    assert project_for("/Users/b/Box/Tareas asignaturas", aliases) == "tareasstats"
+    assert project_for("/home/a/Tareas asignaturas2", aliases) == "tareasasignaturas2"
+
+
+def test_windows_paths():
+    aliases = {"leaicli": "devleaicli"}
+    assert project_for(r"C:\Users\Andrey\Projects\leai-cli", aliases) == "devleaicli"
+    assert project_for(r"C:\Users\Andrey\Projects\leai-cli\src", aliases) == "devleaicli"
+    assert project_for(r"D:\work\ML-vs-GNN", {}) == "mlvsgnn"
+    assert project_for("C:\\", {}) == "root"
+
+
+def test_path_aliases_from_older_versions_are_migrated(tmp_path):
+    import sqlite3
+
+    from brain.db import connect, load_aliases
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE project_aliases (path_prefix TEXT PRIMARY KEY, project TEXT NOT NULL)")
+    old.execute("INSERT INTO project_aliases VALUES ('/home/u/Projects/leai-cli', 'devleaicli')")
+    old.commit()
+    old.close()
+
+    assert load_aliases(connect(path)) == {"leaicli": "devleaicli"}

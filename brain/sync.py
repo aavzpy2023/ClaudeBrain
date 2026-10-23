@@ -15,7 +15,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect
+from brain.db import connect, relabel_sessions
 
 ENV_FILE = Path.home() / ".config" / "claude-brain" / ".env"
 SCHEMA_FILE = Path(__file__).resolve().parent.parent / "remote" / "schema.sql"
@@ -130,6 +130,47 @@ def push_digests(local: sqlite3.Connection, remote) -> int:
     return len(rows)
 
 
+def merge_aliases(local: dict, remote: dict) -> tuple[dict, dict]:
+    """Last write wins per folder. Inputs map folder -> (project, updated_at); returns the rows
+    each side is missing or has older: (to_local, to_remote)."""
+    to_local = {f: v for f, v in remote.items() if f not in local or v[1] > local[f][1]}
+    to_remote = {f: v for f, v in local.items() if f not in remote or v[1] > remote[f][1]}
+    return to_local, to_remote
+
+
+def sync_aliases(local: sqlite3.Connection, remote) -> int:
+    """Share folder aliases between machines; returns local sessions relabelled."""
+    import psycopg
+
+    try:
+        remote_rows = {r[0]: (r[1], r[2]) for r in remote.execute(
+            "SELECT folder, project, updated_at FROM aliases")}
+    except psycopg.errors.UndefinedTable:
+        remote.rollback()  # mirror predates aliases; `sync.py --init` adds the table
+        return 0
+    local_rows = {r[0]: (r[1], r[2]) for r in local.execute(
+        "SELECT folder, project, updated_at FROM folder_aliases")}
+    to_local, to_remote = merge_aliases(local_rows, remote_rows)
+
+    if to_remote:
+        with remote.cursor() as cur:
+            cur.executemany(
+                """INSERT INTO aliases (folder, project, updated_at) VALUES (%s, %s, %s)
+                   ON CONFLICT (folder) DO UPDATE SET project = excluded.project,
+                     updated_at = excluded.updated_at
+                   WHERE excluded.updated_at > aliases.updated_at""",
+                [(f, *v) for f, v in to_remote.items()],
+            )
+        remote.commit()
+    if not to_local:
+        return 0
+    local.executemany(
+        "INSERT OR REPLACE INTO folder_aliases (folder, project, updated_at) VALUES (?, ?, ?)",
+        [(f, *v) for f, v in to_local.items()],
+    )
+    return relabel_sessions(local)
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--init", action="store_true", help="create/upgrade the remote schema first")
@@ -156,6 +197,7 @@ def main(argv=None) -> None:
         if args.init:
             remote.execute(SCHEMA_FILE.read_text())
             remote.commit()
+        sync_aliases(local, remote)  # before sessions, so relabelled projects go up in this run
         sent = push_messages(local, remote)
         push_sessions(local, remote)
         digests = push_digests(local, remote)

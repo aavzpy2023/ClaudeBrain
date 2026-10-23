@@ -45,7 +45,8 @@ and shows you the result.**
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`regresion` finds `regresión`), ranked with BM25, with highlighted snippets. |
-| 📁 **Organized by project** | A project is its folder name, normalized — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn` automatically. Aliases handle the exceptions. |
+| 📁 **Organized by project** | A project is its folder name, normalized — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn` automatically. Folder-name aliases handle the exceptions and are shared by all your computers. |
+| 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
 | 📝 **Lazy digests** | When Claude summarizes a project for you, it caches the summary; the next report only reads what happened since. Zero cost up front. |
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
@@ -137,8 +138,9 @@ erDiagram
 
 ## 🚀 Installation
 
-> Requirements: Linux/macOS, Python 3.10+ with SQLite FTS5 (any modern build), Claude Code.
-> For the cloud mirror also [uv](https://docs.astral.sh/uv/).
+> Requirements: Python 3.10+ with SQLite FTS5 (any python.org / distro build), Claude Code.
+> For the cloud mirror also [uv](https://docs.astral.sh/uv/). Linux and macOS are tested;
+> Windows is supported (see below) but not yet tested on a real machine.
 
 ```bash
 git clone git@github.com:aavzpy2023/ClaudeBrain.git ~/Projects/ClaudeBrain
@@ -167,6 +169,28 @@ It merges into `~/.claude/settings.json` without touching your other settings, r
 previous hooks instead of duplicating them, and leaves a backup in
 `settings.json.bak-claudebrain`. Honors `CLAUDE_CONFIG_DIR`. Then open `/hooks` once (or restart
 Claude Code) so running sessions pick up the hooks.
+
+<details>
+<summary><b>🪟 Windows</b> (PowerShell)</summary>
+
+```powershell
+git clone git@github.com:aavzpy2023/ClaudeBrain.git $HOME\Projects\ClaudeBrain
+cd $HOME\Projects\ClaudeBrain
+
+# optional — cloud mirror
+New-Item -ItemType Directory -Force $HOME\.config\claude-brain | Out-Null
+Set-Content $HOME\.config\claude-brain\.env 'NEON_URL=postgresql://…'
+
+py -3 brain\install.py
+```
+
+Same files as on Linux, under your user folder: `%USERPROFILE%\.claude\` for Claude Code,
+`%USERPROFILE%\.local\share\claude-brain\brain.db` for the database. Hooks are written in
+exec form (`"command": "C:/…/python.exe", "args": ["…/brain/hook.py", …]`), so they don't
+depend on Git Bash or PowerShell; Claude's own queries go through its Bash tool (Git Bash),
+hence the forward-slash paths in the skill.
+
+</details>
 
 ### ☁️ Cloud mirror + claude.ai access (optional)
 
@@ -214,9 +238,12 @@ mirror, so claude.ai sees the union of all of them.
   `<hostname>:<local id>`.
 - The first install on a new machine backfills that machine's existing transcripts (whatever
   Claude Code hasn't deleted yet) and uploads them.
-- **Aliases are per machine.** A project lives in different folders on each computer, so define
-  the aliases there too (`query.py alias <folder> <name>`) using the same names, or the same
-  project shows up under two names in the mirror.
+- **The same project adds up across machines.** Projects are named after the folder, not its
+  path, and aliases are keyed by folder name too (`leai-cli` → `devleaicli` wherever that
+  folder lives). Aliases sync both ways through Neon (last write wins), so one created at home
+  relabels the work PC's sessions on its next sync — and vice versa.
+- A *session* belongs to one machine (Claude Code gives each conversation its own id); it's the
+  *project* that collects sessions from every computer.
 - Locally, each machine only searches its own sessions; the union lives in Neon (claude.ai).
 - On a machine you don't fully trust (e.g. a work laptop), consider a dedicated Neon role with
   only `INSERT/UPDATE/SELECT` on the three tables instead of the owner string.
@@ -254,7 +281,7 @@ $Q project mlvsgnn                            # timeline + latest digest
 $Q save-digest project mlvsgnn <<'EOF'        # cache a distilled summary
 Goal… decisions… results… open issues…
 EOF
-$Q alias "~/Dropbox/PhD/Tarea 1" estadistica-tarea1   # group/rename folders
+$Q alias "Tareas asignaturas" tareasstats   # folder name (or a path) → project, any depth, all machines
 ```
 
 ```text
@@ -302,13 +329,14 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 28 tests, in-memory fixtures, < 1 s
+uv run pytest            # 34 tests, in-memory fixtures, < 1 s
 ```
 
 ```
 brain/
   db.py        schema, connection, project naming rules
-  ingest.py    incremental JSONL → SQLite archiver (the hook)
+  ingest.py    incremental JSONL → SQLite archiver
+  hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   query.py     search / sessions / projects / digests — library + CLI
   sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
   install.py   per-machine installer: skill, hooks, permission, backfill, first sync
@@ -338,9 +366,17 @@ reuse it as is.
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Several computers feeding one cloud mirror
-- [ ] Share aliases across machines through Neon
+- [x] Share aliases across machines through Neon
+- [x] Windows support (exec-form hooks, both path styles) — awaiting a real-machine test
 
 ## 📜 Changelog
+
+### 0.4.0 — 2026-10-23
+- Aliases are keyed by **folder name** instead of absolute path (deepest matching folder wins),
+  so they hold on every machine; old path aliases migrate automatically.
+- Aliases sync both ways through Neon (`aliases` table, last write wins) and relabel sessions.
+- Windows support: hooks call `brain/hook.py` in exec form (no shell), POSIX and Windows paths
+  both understood, forward-slash paths in the skill and permission rule.
 
 ### 0.3.0 — 2026-10-23
 - `brain/install.py`: one-command, idempotent installer (skill rendered with local paths,

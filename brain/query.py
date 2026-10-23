@@ -10,7 +10,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect, load_aliases, normalize_name, project_for
+from brain.db import connect, load_aliases, normalize_name, set_alias
 
 DEFAULT_ROLES = ("user", "assistant", "summary")
 
@@ -181,24 +181,10 @@ def save_digest(
     return dict(conn.execute("SELECT * FROM digests WHERE id = ?", (cur.lastrowid,)).fetchone())
 
 
-def alias(conn: sqlite3.Connection, path_prefix: str, name: str) -> int:
-    """Map a folder prefix to a project name and re-label existing sessions; returns rows changed."""
-    path_prefix = str(Path(path_prefix).expanduser()).rstrip("/")
-    conn.execute(
-        "INSERT OR REPLACE INTO project_aliases(path_prefix, project) VALUES (?, ?)",
-        (path_prefix, normalize_name(name)),
-    )
-    aliases = load_aliases(conn)
-    changed = 0
-    for sid, cwd, current in conn.execute(
-        "SELECT session_id, project_cwd, project FROM sessions WHERE project_cwd IS NOT NULL"
-    ).fetchall():
-        new = project_for(cwd, aliases)
-        if new != current:
-            conn.execute("UPDATE sessions SET project = ? WHERE session_id = ?", (new, sid))
-            changed += 1
-    conn.commit()
-    return changed
+def alias(conn: sqlite3.Connection, folder: str, name: str) -> int:
+    """Map a folder name (a path works too: its last folder is used) to a project, on every
+    machine once synced; re-labels existing sessions and returns how many changed."""
+    return set_alias(conn, folder, name)
 
 
 def _day(ts: str | None) -> str:
@@ -248,8 +234,8 @@ def main(argv=None) -> None:
     p.add_argument("key", help="project name or session id")
     p.add_argument("--covers-until", help="ISO timestamp the summary covers up to")
 
-    p = sub.add_parser("alias", help="map a folder (and subfolders) to a project; no args lists")
-    p.add_argument("path_prefix", nargs="?")
+    p = sub.add_parser("alias", help="map a folder name (and its subfolders) to a project; no args lists")
+    p.add_argument("folder", nargs="?", help="folder name or path; only its last folder name counts")
     p.add_argument("name", nargs="?")
 
     args = parser.parse_args(argv)
@@ -306,12 +292,12 @@ def _run(conn: sqlite3.Connection, args) -> None:
         d = save_digest(conn, args.scope, args.key, sys.stdin.read(), args.covers_until)
         print(f"saved digest #{d['id']} for {d['scope']} {d['key']} (covers until {d['covers_until_ts']})")
     elif args.cmd == "alias":
-        if args.path_prefix and args.name:
-            n = alias(conn, args.path_prefix, args.name)
+        if args.folder and args.name:
+            n = alias(conn, args.folder, args.name)
             print(f"alias set; {n} session(s) relabelled")
         else:
-            for prefix, name in load_aliases(conn):
-                print(f"{name:<20} {prefix}")
+            for folder, name in sorted(load_aliases(conn).items(), key=lambda a: a[1]):
+                print(f"{name:<26} ← folder '{folder}'")
 
 
 if __name__ == "__main__":

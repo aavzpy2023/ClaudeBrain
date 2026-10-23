@@ -59,6 +59,13 @@ BEGIN
     END IF;
 END $$;
 
+-- Folder-name aliases shared by all machines (last write wins, merged by sync.py).
+CREATE TABLE IF NOT EXISTS aliases (
+    folder     text PRIMARY KEY,
+    project    text NOT NULL,
+    updated_at text NOT NULL
+);
+
 -- Query API for claude.ai: `SELECT * FROM brain_xxx(...)`. Project names match partially.
 
 CREATE OR REPLACE FUNCTION brain_projects()
@@ -138,6 +145,6 @@ BEGIN
     END IF;
 END $$;
 GRANT USAGE ON SCHEMA public TO brain_reader;
-GRANT SELECT ON sessions, messages, digests TO brain_reader;
+GRANT SELECT ON sessions, messages, digests, aliases TO brain_reader;
 -- Lets the owner connection switch to brain_reader (SET ROLE) without inheriting anything.
 GRANT brain_reader TO CURRENT_USER WITH INHERIT FALSE, SET TRUE;

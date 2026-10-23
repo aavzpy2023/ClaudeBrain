@@ -1,0 +1,126 @@
+-- Neon (Postgres) mirror of the local brain, queried from claude.ai through the Neon MCP
+-- connector as the read-only role brain_reader. Idempotent: applied by `sync.py --init`.
+
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- unaccent() is only STABLE; generated columns and indexes need an IMMUTABLE wrapper.
+CREATE OR REPLACE FUNCTION brain_unaccent(text) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+AS $$ SELECT public.unaccent('public.unaccent'::regdictionary, $1) $$;
+
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id  text PRIMARY KEY,
+    project     text,
+    project_cwd text,
+    entrypoint  text,
+    git_branch  text,
+    title       text,
+    first_ts    text,
+    last_ts     text,
+    msg_count   integer NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS sessions_project ON sessions (project, last_ts);
+
+CREATE TABLE IF NOT EXISTS messages (
+    uuid         text PRIMARY KEY,
+    session_id   text NOT NULL,
+    ts           text,
+    role         text NOT NULL,
+    entrypoint   text,
+    cwd          text,
+    is_sidechain integer NOT NULL DEFAULT 0,
+    text         text NOT NULL,
+    -- 'simple' + unaccent mirrors the local FTS5 tokenizer: no stemming, accent-insensitive.
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', brain_unaccent(text))) STORED
+);
+CREATE INDEX IF NOT EXISTS messages_session ON messages (session_id, ts);
+CREATE INDEX IF NOT EXISTS messages_tsv ON messages USING gin (tsv);
+
+CREATE TABLE IF NOT EXISTS digests (
+    id              bigint PRIMARY KEY,
+    scope           text NOT NULL,
+    key             text NOT NULL,
+    covers_until_ts text,
+    content         text NOT NULL,
+    created_at      text NOT NULL
+);
+
+-- Query API for claude.ai: `SELECT * FROM brain_xxx(...)`. Project names match partially.
+
+CREATE OR REPLACE FUNCTION brain_projects()
+RETURNS TABLE (project text, sessions bigint, messages bigint, last_ts text, folders text)
+LANGUAGE sql STABLE AS $$
+    SELECT project, count(*), sum(msg_count), max(last_ts),
+           string_agg(DISTINCT project_cwd, ' | ')
+    FROM sessions WHERE msg_count > 0 AND project IS NOT NULL
+    GROUP BY project ORDER BY max(last_ts) DESC
+$$;
+
+CREATE OR REPLACE FUNCTION brain_recent(p_project text DEFAULT NULL, p_limit integer DEFAULT 10)
+RETURNS TABLE (session_id text, project text, entrypoint text, title text,
+               first_ts text, last_ts text, msg_count integer)
+LANGUAGE sql STABLE AS $$
+    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count
+    FROM sessions
+    WHERE msg_count > 0 AND (p_project IS NULL OR project ILIKE '%' || p_project || '%')
+    ORDER BY last_ts DESC LIMIT p_limit
+$$;
+
+CREATE OR REPLACE FUNCTION brain_search(q text, p_project text DEFAULT NULL,
+                                        p_since text DEFAULT NULL, p_limit integer DEFAULT 20)
+RETURNS TABLE (ts text, project text, entrypoint text, session_id text, title text,
+               role text, snippet text)
+LANGUAGE sql STABLE AS $$
+    WITH query AS (SELECT websearch_to_tsquery('simple', brain_unaccent(q)) AS tq)
+    SELECT m.ts, s.project, m.entrypoint, m.session_id, s.title, m.role,
+           ts_headline('simple', brain_unaccent(m.text), query.tq,
+                       'StartSel=[, StopSel=], MaxWords=35, MinWords=12, MaxFragments=2')
+    FROM messages m JOIN sessions s USING (session_id), query
+    WHERE m.tsv @@ query.tq
+      AND m.role IN ('user', 'assistant', 'summary') AND m.is_sidechain = 0
+      AND (p_project IS NULL OR s.project ILIKE '%' || p_project || '%')
+      AND (p_since IS NULL OR m.ts >= p_since)
+    ORDER BY ts_rank(m.tsv, query.tq) DESC LIMIT p_limit
+$$;
+
+CREATE OR REPLACE FUNCTION brain_project(p_name text)
+RETURNS TABLE (session_id text, project text, entrypoint text, title text,
+               first_ts text, last_ts text, msg_count integer)
+LANGUAGE sql STABLE AS $$
+    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count
+    FROM sessions
+    WHERE msg_count > 0 AND project ILIKE '%' || p_name || '%'
+    ORDER BY first_ts
+$$;
+
+CREATE OR REPLACE FUNCTION brain_digest(p_key text)
+RETURNS TABLE (scope text, key text, covers_until_ts text, created_at text, content text)
+LANGUAGE sql STABLE AS $$
+    SELECT DISTINCT ON (scope, key) scope, key, covers_until_ts, created_at, content
+    FROM digests WHERE key ILIKE '%' || p_key || '%'
+    ORDER BY scope, key, id DESC
+$$;
+
+CREATE OR REPLACE FUNCTION brain_session(p_session text, p_after text DEFAULT NULL,
+                                         p_limit integer DEFAULT 200)
+RETURNS TABLE (ts text, role text, text text)
+LANGUAGE sql STABLE AS $$
+    SELECT m.ts, m.role, m.text FROM messages m
+    WHERE m.session_id LIKE p_session || '%'
+      AND m.role IN ('user', 'assistant', 'summary') AND m.is_sidechain = 0
+      AND (p_after IS NULL OR m.ts > p_after)
+    ORDER BY m.ts LIMIT p_limit
+$$;
+
+-- Read-only role for the MCP connector (?roleName=brain_reader). Created here with SQL on
+-- purpose: Console-created roles join neon_superuser and can read everything.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'brain_reader') THEN
+        CREATE ROLE brain_reader LOGIN;
+    END IF;
+END $$;
+GRANT USAGE ON SCHEMA public TO brain_reader;
+GRANT SELECT ON sessions, messages, digests TO brain_reader;
+-- Lets the owner connection switch to brain_reader (SET ROLE) without inheriting anything.
+GRANT brain_reader TO CURRENT_USER WITH INHERIT FALSE, SET TRUE;

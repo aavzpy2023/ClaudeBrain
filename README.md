@@ -8,7 +8,8 @@ in one small SQLite file.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)
-![Dependencies](https://img.shields.io/badge/runtime%20deps-0-brightgreen)
+![Dependencies](https://img.shields.io/badge/core%20deps-0-brightgreen)
+![Neon](https://img.shields.io/badge/cloud-Neon%20Postgres-00E599?logo=postgresql&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
@@ -48,7 +49,8 @@ and shows you the result.**
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
 | 📝 **Lazy digests** | When Claude summarizes a project for you, it caches the summary; the next report only reads what happened since. Zero cost up front. |
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
-| 🔒 **Local only** | Nothing leaves your machine. |
+| ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
+| 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
 ---
 
@@ -71,6 +73,9 @@ flowchart LR
     SKILL -->|"brain/query.py"| DB
     DB --> ANS(["📄 Answer · report · resume command"])
     SKILL -.->|save-digest| DB
+
+    DB -->|"brain/sync.py (async, when online)<br/>secrets redacted"| NEON[("☁️ Neon Postgres")]
+    PHONE(["📱 claude.ai web / mobile"]) -->|"Neon MCP connector<br/>read-only · brain_reader"| NEON
 ```
 
 **Ingestion** reads each transcript from the last byte offset it saw, so a run with nothing new
@@ -192,6 +197,31 @@ Open `/hooks` once (or restart Claude Code) so running sessions pick up the chan
 
 ---
 
+**5. (Optional) Cloud mirror + claude.ai access**
+
+Create a Neon project, put its connection string in `~/.config/claude-brain/.env`
+(`NEON_URL=postgresql://…`, `chmod 600`, never commit it), then:
+
+```bash
+uv run $BRAIN/brain/sync.py --init     # creates tables, search functions and the read-only role
+```
+
+Chain the sync after the ingest in the `Stop` hook:
+
+```bash
+… ingest.py --quiet 2>>"$LOG"; /path/to/uv run --quiet --project $BRAIN $BRAIN/brain/sync.py --quiet 2>>"$LOG" || true
+```
+
+Finally add the connector and the "Brain" project on claude.ai following
+[`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md).
+
+What reaches the cloud is redacted first: API keys, GitHub/AWS/Google/Slack tokens, JWTs,
+private keys, passwords in URLs and `password=`/`token:`-style assignments become
+`[REDACTED:…]`. The connector runs as `brain_reader`, a role created with SQL that can only
+`SELECT` (Console-created Neon roles join `neon_superuser` and could read everything).
+
+---
+
 ## 💬 Usage
 
 ### Just ask Claude
@@ -271,7 +301,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 14 tests, in-memory fixtures, < 1 s
+uv run pytest            # 24 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -279,6 +309,10 @@ brain/
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver (the hook)
   query.py     search / sessions / projects / digests — library + CLI
+  sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
+remote/
+  schema.sql   Postgres mirror, brain_* query functions, read-only role
+  claude_ai_instructions.md   connector URL + claude.ai project instructions
 skill/
   SKILL.md     the claude-brain skill (symlinked into ~/.claude/skills)
 tests/         synthetic transcripts, temp databases
@@ -296,12 +330,18 @@ reuse it as is.
 - [x] Full-text search, projects, sessions, lazy digests, aliases
 - [x] Real-time archiving (async `Stop` hook)
 - [x] Resume workflow (native `--resume` or from the archive)
-- [ ] **MCP server** — query the brain from the Claude Desktop / claude.ai chat too
+- [x] **claude.ai access** — Neon mirror + official Neon MCP connector, read-only
+- [ ] Save digests from claude.ai (write grant on `digests` only, pulled back to local)
 - [ ] **claude.ai importer** — ingest the official data export (`conversations.json`) for non-Code chats
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [ ] Install script (paths, skill symlink, settings merge) instead of manual steps
 
 ## 📜 Changelog
+
+### 0.2.0 — 2026-10-23
+- Neon Postgres mirror: incremental push (`brain/sync.py`), offline-safe, secret redaction.
+- `remote/schema.sql`: accent-insensitive FTS, `brain_*` SQL functions, read-only `brain_reader` role.
+- claude.ai connector + project instructions to query the brain from web and mobile.
 
 ### 0.1.0 — 2026-10-23
 - First release: archiver, query CLI, `claude-brain` skill, `Stop` + `SessionEnd` hooks.
@@ -319,8 +359,10 @@ reuse it as is.
   are not archived yet — see the roadmap.
 - Tool outputs are truncated by design; the archive preserves the conversation, not every
   byte of every command output.
-- Transcripts may contain secrets you pasted into a session; the database inherits them.
-  It stays local — keep it that way.
+- Transcripts may contain secrets you pasted into a session. The local database keeps them
+  as is; the cloud mirror gets a redacted copy, but redaction is pattern-based — an unusual
+  secret format can slip through.
+- From claude.ai the brain is read-only for now: summaries can only be saved from Claude Code.
 
 ## License
 

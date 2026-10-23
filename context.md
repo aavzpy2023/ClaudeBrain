@@ -26,12 +26,16 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
 - **Digests = lazy cache of distilled summaries.** Written by Claude after reading a project;
   `covers_until_ts` marks what is covered so the next report only reads newer sessions.
   Files: `brain/query.py::save_digest`, `brain/query.py::project`
-- **Integration.** Skill symlinked as `~/.claude/skills/claude-brain` → `skill/`; `SessionEnd`
-  hook in `~/.claude/settings.json` runs `/usr/bin/python3 brain/ingest.py --quiet` (errors to
+- **Integration.** Skill symlinked as `~/.claude/skills/claude-brain` → `skill/`; async `Stop`
+  hook (every reply: ingest, then sync) and `SessionEnd` hook (ingest only) in `~/.claude/settings.json` (errors to
   `~/.local/share/claude-brain/ingest.log`); `cleanupPeriodDays: 3650` there keeps transcripts.
   Files: `skill/SKILL.md`
+- **Cloud mirror (optional).** `sync.py` pushes SQLite → Neon after each ingest (Stop hook only,
+  async): messages/digests by rowid/id watermark in `sync_state`, sessions fully upserted; offline
+  = no-op. Text is redacted before upload. psycopg is the only dependency and only sync needs it.
+  claude.ai reads via the Neon MCP connector as `brain_reader` (SELECT-only, created in SQL).
+  Files: `brain/sync.py::redact`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
 - **README is the living doc.** Every user-visible change updates its Roadmap checkboxes and adds
   a Changelog entry in the same commit.
   Files: `README.md`
-- **Phase 2 (not built):** MCP server over `brain/query.py` for Claude Desktop/claude.ai chat;
-  importer for the claude.ai data export (`conversations.json`).
+- **Not built yet:** importer for the claude.ai data export (`conversations.json`).

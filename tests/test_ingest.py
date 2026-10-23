@@ -121,3 +121,15 @@ def test_path_aliases_from_older_versions_are_migrated(tmp_path):
     old.close()
 
     assert load_aliases(connect(path)) == {"leaicli": "devleaicli"}
+
+
+def test_project_names_in_any_script():
+    from brain.db import normalize_name
+
+    assert normalize_name("Tésis_Doctoral") == "tesisdoctoral"
+    assert normalize_name("Übungen-Straße") == "ubungenstrasse"
+    assert normalize_name("机器学习-项目") == "机器学习项目"
+    assert normalize_name("Проект 2") == "проект2"
+    assert normalize_name("2026-数据分析") == "数据分析"
+    assert project_for("/home/李/项目/数据", {}) == "数据"
+    assert project_for("/home/u/Проект", {"проект": "russian"}) == "russian"

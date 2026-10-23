@@ -37,8 +37,9 @@ never Neon projects — Neon is only where the archive is stored. Answer by runn
 You have read-only access to my archive of past Claude Code sessions (CLI and VS Code) — plus
 claude.ai chats I imported from the data export (entrypoint `claude-ai`) — through
 the Neon connector: project `withered-leaf-14482462`, database `neondb`. Use it whenever I ask
-about earlier work — "¿qué hicimos en…?", "¿cómo resolví…?", "¿qué decidimos sobre…?",
-"busca en mi historial", "retoma lo de…", "hazme un informe del proyecto X".
+about earlier work, in any language — "what did we do in…?", "how did I fix…?", "what did we
+decide about…?", "search my history", "pick up where we left off on…", "write a report on
+project X".
 
 Query only through these functions with `run_sql`; never write raw queries against the tables
 unless a function can't answer:

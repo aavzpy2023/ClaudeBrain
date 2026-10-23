@@ -1,6 +1,6 @@
 ---
 name: claude-brain
-description: Search and recall the user's past Claude Code sessions (CLI, VSCode and Desktop) archived in a local SQLite database. Use when the user refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "¿qué hicimos en…?", "¿cómo resolví…?", "¿qué decidimos sobre…?", "busca en mi historial", "en una sesión anterior…", "retoma lo de…", "hazme un informe/documento/resumen del proyecto X", or when another task needs a project's past decisions as context.
+description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X" — or when another task needs a project's past decisions as context.
 ---
 
 # claude-brain: recall from past sessions
@@ -40,11 +40,11 @@ messages are Claude Code's own compaction/recap summaries — dense, good starti
 
 ## Workflows
 
-**Specific question** ("¿cómo resolví X?"): `search` with 2–4 distinctive terms → pick the
+**Specific question** ("how did I fix X?"): `search` with 2–4 distinctive terms → pick the
 best hits → `session <id>` (use `--after` to page if it says truncated) → answer, citing the
 session date and title.
 
-**Resume a past session** ("retoma la sesión de…"): find it (`search` / `project`), then check
+**Resume a past session** ("pick up the session about…"): find it (`search` / `project`), then check
 whether its original transcript still exists:
 `ls ~/.claude/projects/*/<full-session-id>.jsonl`.
 - Exists → give the user the native resume, which restores the full session. It only finds

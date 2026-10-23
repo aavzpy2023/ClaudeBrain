@@ -132,14 +132,16 @@ def _migrate_path_aliases(conn: sqlite3.Connection) -> None:
 
 
 def normalize_name(name: str) -> str:
-    """Lowercase ASCII alphanumerics only, so 'ML-vs-GNN' and 'MLvsGNN' collide on purpose.
+    """Lowercase letters and digits only, so 'ML-vs-GNN' and 'MLvsGNN' collide on purpose.
 
-    A leading year ('2026-ML vs GNN') is dropped too, so dated research folders join
-    their undated code repos.
+    Accents are stripped ('Tésis' → 'tesis', 'Straße' → 'strasse') but letters of any script are
+    kept ('项目', 'проект'), so non-Latin folder names still get a name. A leading year
+    ('2026-ML vs GNN') is dropped too, so dated research folders join their undated code repos.
     """
-    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    flat = re.sub(r"[^a-z0-9]", "", ascii_name.lower())
-    return re.sub(r"^(19|20)\d{2}(?=[a-z])", "", flat) or flat
+    decomposed = unicodedata.normalize("NFKD", name.casefold())
+    base = "".join(c for c in decomposed if not unicodedata.combining(c))
+    flat = re.sub(r"[\W_]", "", unicodedata.normalize("NFKC", base))
+    return re.sub(r"^(19|20)\d{2}(?=[^\W\d_])", "", flat) or flat
 
 
 def path_parts(path: str) -> list[str]:

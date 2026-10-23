@@ -8,7 +8,8 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
 - **Project naming (machine-independent on purpose).** Precedence in `project_for`: alias on the
   session's git remote → alias on any cwd folder name (deepest first) → repo name (remote's last
   segment, else repo root folder; looked up in aliases too) → `tmp` for temp dirs → cwd's last
-  folder. Names are normalized (lowercase ASCII alnum, leading year dropped). `folder_aliases`
+  folder. Names are normalized (casefolded, accents stripped, letters/digits of any script
+  kept, leading year dropped). `folder_aliases`
   keys are normalized folder names OR remotes like `github.com/owner/repo` (contain `/`).
   `sessions.repo`/`repo_root` are resolved once per session after each ingest (`resolve_repos`,
   reading .git files; `repo_root=''` = checked, not a repo) and kept even if the folder vanishes.

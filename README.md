@@ -45,7 +45,7 @@ and shows you the result.**
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
-| 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`regresion` finds `regresión`), ranked with BM25, with highlighted snippets. |
+| 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`naive` finds `naïve`, `cafe` finds `café`), ranked with BM25, with highlighted snippets. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
@@ -72,7 +72,7 @@ flowchart LR
     ING --> DB[("🧠 brain.db<br/>SQLite + FTS5")]
     EXPORT(["📦 claude.ai data export"]) -->|"brain/importer.py (by hand)"| DB
 
-    YOU(["🙋 You: '¿qué decidimos sobre X?'"]) --> SKILL["claude-brain skill"]
+    YOU(["🙋 You: 'what did we decide about X?'"]) --> SKILL["claude-brain skill"]
     SKILL -->|"brain/query.py"| DB
     DB --> ANS(["📄 Answer · report · resume command"])
     SKILL -.->|save-digest| DB
@@ -271,14 +271,15 @@ mirror, so claude.ai sees the union of all of them.
 
 ### Just ask Claude
 
-The skill triggers on requests about past work, in English or Spanish:
+The skill triggers on requests about past work, in any language — your archive keeps whatever
+language you worked in, and Claude reads and answers in yours:
 
 ```text
-> ¿qué decidimos sobre la arquitectura del paper downloader?
-> busca en mi historial cómo configuré el túnel SSH
-> retoma la sesión de las gráficas de papers.sqlite
-> hazme un informe de todo el proyecto meta-análisis
-> ¿qué sesiones tengo de la tesis?
+> what did we decide about the paper downloader architecture?
+> search my history for how I set up the SSH tunnel
+> pick up the session about the papers.sqlite charts
+> write a report on everything in the meta-analysis project
+> which sessions do I have for the thesis?
 ```
 
 Behind the scenes Claude runs the CLI below, reads the results and answers, writes the
@@ -291,14 +292,14 @@ Q="/usr/bin/python3 $BRAIN/brain/query.py"
 
 $Q projects                                   # all projects, sessions, last activity
 $Q recent --project thesis --limit 5          # latest sessions (partial names work)
-$Q search "graphsage regresión" --since 2026-10-01
+$Q search "graphsage naive bayes" --since 2026-10-01
 $Q session f1c3077a --max-chars 8000          # condensed transcript (id prefix works)
 $Q session f1c3077a --after 2026-10-19T12:12:45Z   # next page
 $Q project mlvsgnn                            # timeline + latest digest
 $Q save-digest project mlvsgnn <<'EOF'        # cache a distilled summary
 Goal… decisions… results… open issues…
 EOF
-$Q alias "Tareas asignaturas" tareasstats   # folder name → project, any depth, all machines
+$Q alias "Course assignments" coursework   # folder name → project, any depth, all machines
 $Q alias git@github.com:me/leai-cli.git devleaicli   # git remote, any URL form
 $Q alias ~/Projects/leai-cli devleaicli       # existing path: its folder name + its repo's remote
 ```
@@ -310,9 +311,9 @@ $ query.py project phdthesis
 (no digest yet)
 
 ## sessions (* = not covered by the digest)
-* 1df0b0ad  2026-10-15 20:10 → 2026-10-19 12:10  claude-vscode  788 msgs  Paper_downloader para ScienceDirect
-* 81b0deaa  2026-10-16 11:52 → 2026-10-16 20:23  claude-vscode  654 msgs  Migración PaperDownloader de Flask a FastAPI
-* 44705308  2026-10-17 13:56 → 2026-10-17 17:43  cli            78 msgs  Carpetas remotas por SSH en VS Code
+* 1df0b0ad  2026-10-15 20:10 → 2026-10-19 12:10  claude-vscode  788 msgs  Paper downloader for ScienceDirect
+* 81b0deaa  2026-10-16 11:52 → 2026-10-16 20:23  claude-vscode  654 msgs  Migrate PaperDownloader from Flask to FastAPI
+* 44705308  2026-10-17 13:56 → 2026-10-17 17:43  cli            78 msgs  Remote folders over SSH in VS Code
 …
 ```
 
@@ -387,7 +388,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 56 tests, in-memory fixtures, < 1 s
+uv run pytest            # 57 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -481,6 +482,7 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] **claude.ai importer** — the official data export (`conversations.json`) for non-Code chats
 - [x] Importer validated against a real export (Oct 2026: 51 chats, 924 messages)
 - [ ] Assign imported claude.ai chats to projects (the export has no chat→project link)
+- [ ] CJK-aware search (FTS5 `trigram` tokenizer / Postgres `pg_trgm`) for Chinese, Japanese, Korean
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Several computers feeding one cloud mirror
@@ -489,6 +491,13 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.6.2 — 2026-10-23
+- Docs, skill triggers and claude.ai instructions in English; the skill now says it works in any
+  language.
+- Project names keep letters of any script (`项目`, `проект`) instead of dropping non-ASCII
+  letters; accents are still stripped (`Tésis` → `tesis`, `Straße` → `strasse`).
+- Documented the CJK search limitation.
 
 ### 0.6.1 — 2026-10-23
 - Importer adapted to the real 2026 export: a manifest of per-category zips, projects as one file
@@ -552,6 +561,11 @@ repo (same remote) or the same aliased folder end up under one project name.
   as is; the cloud mirror gets a redacted copy, but redaction is pattern-based — an unusual
   secret format can slip through.
 - From claude.ai the brain is read-only for now: summaries can only be saved from Claude Code.
+- **Chinese, Japanese and Korean search is weak.** Both SQLite FTS5 (`unicode61`) and Postgres
+  (`simple`) split words on spaces and punctuation; CJK text has none, so a whole sentence
+  becomes one token and a word inside it isn't found (a word at the start of a sentence still
+  matches as a prefix). Archiving, project names and reading sessions work in any script — see
+  the roadmap for search.
 
 ## License
 

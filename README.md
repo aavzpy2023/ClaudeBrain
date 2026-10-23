@@ -308,24 +308,39 @@ $ query.py project phdthesis
 ### Importing your claude.ai chats
 
 Chats in claude.ai (web, Desktop app, mobile) have no hooks, so they come in through the official
-export: **Settings → Privacy → Export data**, wait for the email, download the `.zip`, then:
+export: **Settings → Privacy → Export data**. You get a `manifest-….json` with one link per file
+(each link expires in 24 h and may work only once — open each in the browser where you're
+logged in, let it finish):
+
+| File | Contains | Imported |
+|---|---|:---:|
+| `conversations-000.zip` | `conversations.json` — every chat | ✅ |
+| `projects-000.zip` | `projects/<uuid>.json` — one per claude.ai Project | names only |
+| `frames-000.zip` | artifacts (HTML versions, pages) | — |
+| `light_metadata-000.zip` | user and **login history** | never read |
+
+Put the zips (extracted or not) in one folder and point the importer at it, or at any one of them:
 
 ```bash
-python3 brain/importer.py ~/Downloads/data-2026-….zip --inspect   # look first: counts, fields, projects
-python3 brain/importer.py ~/Downloads/data-2026-….zip             # import (zip, folder or conversations.json)
+python3 brain/importer.py ~/Downloads --inspect   # look first: counts, fields, block types
+python3 brain/importer.py ~/Downloads             # import; only the export's zips are opened
 ```
 
 - Each chat becomes a session with origin `claude-ai` (`--source claude-ai` in searches).
 - A chat inside a claude.ai Project goes to the project of that name, so the claude.ai Project
   "PhD Thesis" and the Claude Code folder `PhD Thesis` add up in `phdthesis`; aliases apply.
-  Chats outside any Project — or if the export doesn't say which Project a chat belongs to,
-  which has been reported — go to `claudeai`.
+  **Currently the export doesn't say which Project a chat belongs to** (checked on a real
+  export, Oct 2026), so for now every chat goes to `claudeai`; the code picks the link up as
+  soon as the export includes it.
 - Messages keep their text, tool calls (truncated like Claude Code's), attachment names plus the
-  start of their extracted text, and file names. Thinking is dropped.
+  start of their extracted text, document titles and file names. Dropped: thinking, images'
+  bytes, and claude.ai's injected instructions (`injected_prompt_block`). Messages that are
+  empty in the export itself (interrupted replies, edit branches) are skipped.
 - Re-import a newer export whenever you like: only new messages are added. The next sync (the
   next Claude Code reply, or `sync.py`) uploads them to Neon.
 - The export format is undocumented and may change; `--inspect` shows what yours contains.
-  Project knowledge files are not in the export.
+- After importing you can delete the downloaded files — especially `light_metadata` (login
+  history) and the manifest (download links).
 
 ### Resuming an old conversation
 
@@ -359,7 +374,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 55 tests, in-memory fixtures, < 1 s
+uv run pytest            # 56 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -451,7 +466,8 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] **claude.ai access** — Neon mirror + official Neon MCP connector, read-only
 - [ ] Save digests from claude.ai (write grant on `digests` only, pulled back to local)
 - [x] **claude.ai importer** — the official data export (`conversations.json`) for non-Code chats
-- [ ] Validate the importer against a real export (format undocumented)
+- [x] Importer validated against a real export (Oct 2026: 51 chats, 924 messages)
+- [ ] Assign imported claude.ai chats to projects (the export has no chat→project link)
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Several computers feeding one cloud mirror
@@ -460,6 +476,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.6.1 — 2026-10-23
+- Importer adapted to the real 2026 export: a manifest of per-category zips, projects as one file
+  each; reads only `conversations*`/`projects*` zips from a folder, deduplicates zip + extracted
+  copies, keeps document titles and the conversation `summary`, drops injected prompt blocks.
 
 ### 0.6.0 — 2026-10-23
 - `brain/importer.py`: imports the claude.ai data export (zip, folder or `conversations.json`),

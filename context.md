@@ -53,7 +53,10 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   conversation uuid, message uuid kept (`<conv>:<i>` if missing), `INSERT OR IGNORE` so re-imports
   only add. Pseudo cwd `claude.ai/<Project name>` (or `claude.ai`) + `repo_root=''` lets
   `project_for`/aliases name it and keeps the repo resolver off. Format is undocumented and the
-  conversation→project link may be absent; parsing is defensive and `--inspect` exists for that.
+  conversation→project link IS absent in the real 2026 export (manifest of zips:
+  conversations-000.zip, projects-000.zip with projects/<uuid>.json, frames = artifacts,
+  light_metadata = login history — never read). `load_export` only opens zips named
+  conversations*/projects*, dedups by uuid; `--inspect` shows structure, not content.
   Files: `brain/importer.py::import_export`, `brain/importer.py::message_text`, `brain/importer.py::load_export`
 - **README is the living doc.** Every user-visible change updates its Roadmap checkboxes and adds
   a Changelog entry in the same commit.

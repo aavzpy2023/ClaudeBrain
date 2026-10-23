@@ -94,3 +94,34 @@ def test_inspect_reports_structure(capsys):
     out = capsys.readouterr().out
     assert "2 conversations, 5 messages, 1 projects" in out
     assert "conversations linked to a project: 1" in out and "PhD Thesis" in out
+
+
+def test_real_2026_export_layout(tmp_path, conn):
+    """Manifest-style export: one zip per category, projects one file each, no chat→project link."""
+    convs = [dict(CONVERSATIONS[1], uuid="c-9", summary="Pan sin gluten: receta y tiempos.")]
+    convs[0]["chat_messages"] = convs[0]["chat_messages"] + [
+        {"uuid": "m-9", "sender": "assistant", "created_at": "2026-08-02T09:01:00Z", "content": [
+            {"type": "injected_prompt_block", "prompt": "user preferences…"},
+            {"type": "image", "file_uuid": "f1"},
+            {"type": "document", "file_uuid": "f2", "title": "receta.pdf"},
+            {"type": "text", "text": "Listo."}]}]
+    with zipfile.ZipFile(tmp_path / "conversations-000.zip", "w") as zf:
+        zf.writestr("conversations.json", json.dumps(convs))
+    with zipfile.ZipFile(tmp_path / "projects-000.zip", "w") as zf:
+        zf.writestr("projects/p-1.json", json.dumps(PROJECTS[0]))
+    with zipfile.ZipFile(tmp_path / "light_metadata-000.zip", "w") as zf:
+        zf.writestr("login_history.json", json.dumps([{"ip": "never read"}]))
+    (tmp_path / "unrelated.zip").write_bytes(b"not even a zip")  # must never be opened
+    (tmp_path / "conversations.json").write_text(json.dumps(convs))  # extracted copy: deduplicated
+
+    for source in (tmp_path, tmp_path / "conversations-000.zip"):
+        conversations, projects = load_export(source)
+        assert [c["uuid"] for c in conversations] == ["c-9"]
+        assert [p["name"] for p in projects] == ["PhD Thesis"]
+
+    stats = import_export(conn, *load_export(tmp_path))
+    assert stats == {"conversations": 1, "in_projects": 0, "messages": 4}
+    texts = dict(conn.execute("SELECT uuid, text FROM messages").fetchall())
+    assert texts["m-9"] == "[document:receta.pdf]\nListo."
+    assert texts["c-9:summary"] == "Pan sin gluten: receta y tiempos."
+    assert conn.execute("SELECT project FROM sessions").fetchone()[0] == "claudeai"

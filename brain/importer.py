@@ -6,6 +6,7 @@ parsing is defensive; run --inspect first on a new export to see what it contain
 """
 import argparse
 import json
+import re
 import sqlite3
 import sys
 import zipfile
@@ -24,18 +25,66 @@ ATTACHMENT_CHARS = 300
 _ROLES = {"human": "user", "user": "user", "assistant": "assistant"}
 
 
+# The 2026 export is a manifest of zips: conversations-000.zip (conversations.json),
+# projects-000.zip (projects/<uuid>.json, one per project), plus frames (artifacts) and
+# light_metadata (users, login history), which are deliberately not read.
+_EXPORT_ZIP = re.compile(r"^(conversations|projects)(-\d+)?\.zip$", re.I)
+
+
+def _collect(name: str, load, convs: list, projects: list) -> None:
+    base = Path(name).name.lower()
+    if not base.endswith(".json"):
+        return
+    if base.startswith("conversations"):
+        data = load()
+        convs.extend(data if isinstance(data, list) else [data])
+    elif base.startswith("projects") or "projects/" in name.replace("\\", "/").lower():
+        data = load()
+        projects.extend(data if isinstance(data, list) else [data])
+
+
 def load_export(path: Path) -> tuple[list, list]:
-    """(conversations, projects) from a zip, an extracted folder, or a bare conversations.json."""
-    if path.suffix.lower() == ".zip":
-        with zipfile.ZipFile(path) as zf:
-            names = {Path(n).name: n for n in zf.namelist()}
-            read = lambda name: json.loads(zf.read(names[name])) if name in names else []
-            return read("conversations.json"), read("projects.json")
-    if path.is_dir():
-        read = lambda name: json.loads((path / name).read_text()) if (path / name).exists() else []
-        return read("conversations.json"), read("projects.json")
-    projects = path.with_name("projects.json")
-    return json.loads(path.read_text()), json.loads(projects.read_text()) if projects.exists() else []
+    """(conversations, projects) from any of: one export zip (its sibling parts are picked up),
+    the folder holding the zips and/or their extracted files, or a bare conversations.json.
+    Other zips in the folder are never opened. Duplicates (zip + extracted copy) collapse by uuid."""
+    convs: list = []
+    projects: list = []
+    if path.is_file() and path.suffix.lower() == ".zip":
+        zips = [path] + [z for z in sorted(path.parent.glob("*.zip")) if z != path and _EXPORT_ZIP.match(z.name)]
+        loose: list[Path] = []
+    elif path.is_dir():
+        zips = [z for z in sorted(path.glob("*.zip")) if _EXPORT_ZIP.match(z.name)]
+        loose = [path / "conversations.json", path / "projects.json", *sorted((path / "projects").glob("*.json"))]
+    else:
+        zips = []
+        loose = [path, path.with_name("projects.json"), *sorted((path.parent / "projects").glob("*.json"))]
+    for z in zips:
+        with zipfile.ZipFile(z) as zf:
+            for member in zf.namelist():
+                _collect(member, lambda m=member: json.loads(zf.read(m)), convs, projects)
+    for f in loose:
+        if f.is_file():
+            target_name = f"projects/{f.name}" if f.parent.name == "projects" else f.name
+            if f == path:
+                convs.extend(_as_list(json.loads(f.read_text())))
+            else:
+                _collect(target_name, lambda f=f: json.loads(f.read_text()), convs, projects)
+    return _dedup(convs), _dedup(projects)
+
+
+def _as_list(data) -> list:
+    return data if isinstance(data, list) else [data]
+
+
+def _dedup(items: list) -> list:
+    seen, out = set(), []
+    for item in items:
+        key = item.get("uuid") if isinstance(item, dict) else None
+        if key and key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
 
 
 def iso(ts: str | None) -> str | None:
@@ -67,6 +116,10 @@ def message_text(msg: dict) -> str:
                 if isinstance(body, list):
                     body = " ".join(b.get("text", "") for b in body if isinstance(b, dict))
                 parts.append(f"[result] {_clip(str(body or ''), TOOL_RESULT_CHARS)}")
+            elif kind == "document" and block.get("title"):
+                parts.append(f"[document:{block['title']}]")
+            # thinking, image (already listed in `files`) and injected_prompt_block (claude.ai's own
+            # injected instructions, like Claude Code's system reminders) carry no conversation.
     elif msg.get("text"):
         parts.append(str(msg["text"]).strip())
     for att in msg.get("attachments") or []:
@@ -117,6 +170,14 @@ def import_export(conn: sqlite3.Connection, conversations: list, projects: list)
                  _ROLES[msg["sender"]], ENTRYPOINT, cwd, text),
             )
             stats["messages"] += cur.rowcount  # not total_changes: FTS triggers count too
+        summary = (conv.get("summary") or "").strip()
+        if summary:
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO messages (uuid, session_id, ts, role, entrypoint, cwd, text)
+                   VALUES (?, ?, ?, 'summary', ?, ?, ?)""",
+                (f"{sid}:summary", sid, iso(conv.get("updated_at")), ENTRYPOINT, cwd, summary),
+            )
+            stats["messages"] += cur.rowcount
         stats["conversations"] += 1
         stats["in_projects"] += bool(project_name)
     refresh_session_stats(conn, [c["uuid"] for c in conversations if c.get("uuid")])

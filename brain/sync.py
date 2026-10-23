@@ -6,6 +6,7 @@ Reads NEON_URL from the environment or ~/.config/claude-brain/.env.
 import argparse
 import os
 import re
+import socket
 import sqlite3
 import sys
 import time
@@ -111,6 +112,7 @@ def push_sessions(local: sqlite3.Connection, remote) -> None:
 
 
 def push_digests(local: sqlite3.Connection, remote) -> int:
+    host = socket.gethostname()
     last = _watermark(local, "digests")
     rows = local.execute(
         "SELECT id, scope, key, covers_until_ts, content, created_at FROM digests WHERE id > ? ORDER BY id",
@@ -119,9 +121,9 @@ def push_digests(local: sqlite3.Connection, remote) -> int:
     if rows:
         with remote.cursor() as cur:
             cur.executemany(
-                """INSERT INTO digests (id, scope, key, covers_until_ts, content, created_at)
-                   VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING""",
-                [(*r[:4], redact(r[4]), r[5]) for r in rows],
+                """INSERT INTO digests (origin, scope, key, covers_until_ts, content, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (origin) DO NOTHING""",
+                [(f"{host}:{r[0]}", *r[1:4], redact(r[4]), r[5]) for r in rows],
             )
         remote.commit()
         _set_watermark(local, "digests", rows[-1][0])

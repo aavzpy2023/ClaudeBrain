@@ -5,13 +5,13 @@ description: Search and recall the user's past Claude Code sessions (CLI, VSCode
 
 # claude-brain: recall from past sessions
 
-Every Claude Code session is archived automatically (SessionEnd hook) into
+Every Claude Code session is archived automatically (after every reply, by a hook) into
 `~/.local/share/claude-brain/brain.db`. Query it by running the script with its **full literal
 path** below — the user pre-approved exactly this command prefix, so don't use a shell variable,
 `cd`, or a pipe in front of it, or the call will prompt for permission:
 
 ```
-/usr/bin/python3 /home/andreyvz/Projects/__GITHUB__aavzpy2023/claude_brain/brain/query.py <command> [options]
+{{BRAIN_QUERY}} <command> [options]
 ```
 
 In the table, `B` stands for that full command.

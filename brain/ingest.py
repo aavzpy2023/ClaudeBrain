@@ -4,6 +4,7 @@ Usage: python3 brain/ingest.py [--root DIR] [--full] [--quiet]
 """
 import argparse
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -15,7 +16,7 @@ if __package__ in (None, ""):
 
 from brain.db import connect, load_aliases, project_for
 
-DEFAULT_ROOT = Path.home() / ".claude" / "projects"
+DEFAULT_ROOT = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
 TOOL_INPUT_CHARS = 300
 TOOL_RESULT_CHARS = 200
 

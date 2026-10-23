@@ -138,87 +138,88 @@ erDiagram
 ## 🚀 Installation
 
 > Requirements: Linux/macOS, Python 3.10+ with SQLite FTS5 (any modern build), Claude Code.
-
-**1. Clone**
+> For the cloud mirror also [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone git@github.com:aavzpy2023/ClaudeBrain.git ~/Projects/ClaudeBrain
-export BRAIN=~/Projects/ClaudeBrain   # used in the steps below
+cd ~/Projects/ClaudeBrain
+
+# optional — only for the cloud mirror (see below): owner connection string of your Neon DB
+mkdir -p ~/.config/claude-brain
+printf 'NEON_URL=%s\n' 'postgresql://…' > ~/.config/claude-brain/.env
+chmod 600 ~/.config/claude-brain/.env
+
+python3 brain/install.py
 ```
 
-**2. Backfill everything Claude Code still has on disk**
+The installer, safe to re-run at any time:
 
-```bash
-/usr/bin/python3 $BRAIN/brain/ingest.py --full
-# ingested 116 file(s), 115 session(s) in 7.2s
-```
+| Step | What it does |
+|---|---|
+| Skill | Renders `skill/SKILL.md` with this machine's paths into `~/.claude/skills/claude-brain/` |
+| Hooks | Adds an async `Stop` hook (ingest, then sync if Neon is configured) and a `SessionEnd` hook (ingest) |
+| Permission | Allows the skill's exact `query.py` command, so queries never prompt |
+| Retention | Raises `cleanupPeriodDays` to 3650 so Claude Code stops deleting transcripts |
+| Backfill | Archives everything Claude Code still has on disk (`ingest.py --full`) |
+| Cloud | With `NEON_URL`: creates/upgrades the remote schema and pushes everything (`sync.py --init`) |
 
-**3. Install the skill** (user-level, so it works in every project)
+It merges into `~/.claude/settings.json` without touching your other settings, replaces its own
+previous hooks instead of duplicating them, and leaves a backup in
+`settings.json.bak-claudebrain`. Honors `CLAUDE_CONFIG_DIR`. Then open `/hooks` once (or restart
+Claude Code) so running sessions pick up the hooks.
 
-```bash
-ln -sfn $BRAIN/skill ~/.claude/skills/claude-brain
-```
+### ☁️ Cloud mirror + claude.ai access (optional)
 
-> ⚠️ `skill/SKILL.md` contains the absolute path to `query.py`. If you cloned somewhere else,
-> update that path (and the permission rule below) to match.
-
-**4. Add to `~/.claude/settings.json`** (merge with what you already have)
-
-```jsonc
-{
-  "cleanupPeriodDays": 3650,          // stop Claude Code from deleting transcripts after 30 days
-  "permissions": {
-    "allow": [
-      // lets the skill query without asking every time
-      "Bash(/usr/bin/python3 /ABS/PATH/ClaudeBrain/brain/query.py:*)"
-    ]
-  },
-  "hooks": {
-    "Stop": [{                         // archive after every reply, in the background
-      "hooks": [{
-        "type": "command",
-        "command": "/usr/bin/python3 /ABS/PATH/ClaudeBrain/brain/ingest.py --quiet 2>>\"$HOME/.local/share/claude-brain/ingest.log\" || true",
-        "timeout": 120,
-        "async": true
-      }]
-    }],
-    "SessionEnd": [{                   // fallback when a session closes
-      "hooks": [{
-        "type": "command",
-        "command": "/usr/bin/python3 /ABS/PATH/ClaudeBrain/brain/ingest.py --quiet 2>>\"$HOME/.local/share/claude-brain/ingest.log\" || true",
-        "timeout": 120
-      }]
-    }]
-  }
-}
-```
-
-Open `/hooks` once (or restart Claude Code) so running sessions pick up the change. Done.
-
----
-
-**5. (Optional) Cloud mirror + claude.ai access**
-
-Create a Neon project, put its connection string in `~/.config/claude-brain/.env`
-(`NEON_URL=postgresql://…`, `chmod 600`, never commit it), then:
-
-```bash
-uv run $BRAIN/brain/sync.py --init     # creates tables, search functions and the read-only role
-```
-
-Chain the sync after the ingest in the `Stop` hook:
-
-```bash
-… ingest.py --quiet 2>>"$LOG"; /path/to/uv run --quiet --project $BRAIN $BRAIN/brain/sync.py --quiet 2>>"$LOG" || true
-```
-
-Finally add the connector and the "Brain" project on claude.ai following
-[`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md).
+1. Create a Neon project and put its **owner** connection string in `~/.config/claude-brain/.env`
+   (above). Never commit it, never paste it into a chat — it would end up archived.
+2. Run the installer (or `uv run brain/sync.py --init`): tables, search functions and the
+   read-only role `brain_reader` are created.
+3. Give `brain_reader` a password and add the connector and the "Brain" project on claude.ai,
+   following [`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md).
 
 What reaches the cloud is redacted first: API keys, GitHub/AWS/Google/Slack tokens, JWTs,
 private keys, passwords in URLs and `password=`/`token:`-style assignments become
 `[REDACTED:…]`. The connector runs as `brain_reader`, a role created with SQL that can only
-`SELECT` (Console-created Neon roles join `neon_superuser` and could read everything).
+`SELECT` (Console-created Neon roles join `neon_superuser` and could read everything), inside
+read-only transactions (`readonly=true`) and with only Neon's SQL tools exposed
+(`category=querying`).
+
+### 🔄 Who updates what
+
+**Only your computers write; claude.ai only reads.**
+
+```
+every Claude reply (Stop hook, background)
+   ├─ ingest.py → local brain.db          always, offline too
+   └─ sync.py   → Neon                    only new rows, only when online
+closing a session (SessionEnd hook)
+   └─ ingest.py → local brain.db          (its last messages reach Neon with the next reply)
+```
+
+- `sync.py` connects with the owner string in `~/.config/claude-brain/.env` — the only
+  credential that can write, and it never leaves the machine.
+- Offline? Archiving keeps working locally; the next reply with internet uploads the backlog.
+- Computer off? Neon stays as of the last synced reply; claude.ai keeps answering from that.
+- Chats in claude.ai / the mobile app are **not** written to the brain (no hooks there) — they
+  stay in claude.ai's own history. See the roadmap's importer.
+- Force a sync by hand: `uv run --project <repo> <repo>/brain/sync.py`
+
+### 💻 Several computers
+
+Install the same way on each machine, pointing every `.env` at the **same** Neon database.
+Each computer keeps its own local `brain.db` (its own sessions) and pushes into the shared
+mirror, so claude.ai sees the union of all of them.
+
+- No collisions: messages and sessions use Claude Code's global UUIDs; digests are keyed by
+  `<hostname>:<local id>`.
+- The first install on a new machine backfills that machine's existing transcripts (whatever
+  Claude Code hasn't deleted yet) and uploads them.
+- **Aliases are per machine.** A project lives in different folders on each computer, so define
+  the aliases there too (`query.py alias <folder> <name>`) using the same names, or the same
+  project shows up under two names in the mirror.
+- Locally, each machine only searches its own sessions; the union lives in Neon (claude.ai).
+- On a machine you don't fully trust (e.g. a work laptop), consider a dedicated Neon role with
+  only `INSERT/UPDATE/SELECT` on the three tables instead of the owner string.
 
 ---
 
@@ -301,7 +302,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 24 tests, in-memory fixtures, < 1 s
+uv run pytest            # 28 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -310,11 +311,12 @@ brain/
   ingest.py    incremental JSONL → SQLite archiver (the hook)
   query.py     search / sessions / projects / digests — library + CLI
   sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
+  install.py   per-machine installer: skill, hooks, permission, backfill, first sync
 remote/
   schema.sql   Postgres mirror, brain_* query functions, read-only role
   claude_ai_instructions.md   connector URL + claude.ai project instructions
 skill/
-  SKILL.md     the claude-brain skill (symlinked into ~/.claude/skills)
+  SKILL.md     the claude-brain skill template ({{BRAIN_QUERY}} filled in by install.py)
 tests/         synthetic transcripts, temp databases
 context.md     index for Claude: where each rule lives
 ```
@@ -334,9 +336,19 @@ reuse it as is.
 - [ ] Save digests from claude.ai (write grant on `digests` only, pulled back to local)
 - [ ] **claude.ai importer** — ingest the official data export (`conversations.json`) for non-Code chats
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
-- [ ] Install script (paths, skill symlink, settings merge) instead of manual steps
+- [x] Installer (paths, skill, settings merge, backfill, first sync)
+- [x] Several computers feeding one cloud mirror
+- [ ] Share aliases across machines through Neon
 
 ## 📜 Changelog
+
+### 0.3.0 — 2026-10-23
+- `brain/install.py`: one-command, idempotent installer (skill rendered with local paths,
+  hooks + permission merged into settings.json with backup, backfill, first sync).
+- Several computers can share one Neon mirror; remote digests keyed by `<hostname>:<id>`
+  (schema auto-upgrades with `sync.py --init`).
+- `CLAUDE_CONFIG_DIR` honored for transcripts and settings.
+- README: who updates Neon, multi-computer setup.
 
 ### 0.2.1 — 2026-10-23
 - `brain_reader` needs a password: the Neon connector logs in as that role (documented in `remote/`).

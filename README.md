@@ -362,6 +362,54 @@ reuse it as is.
 
 ---
 
+## ❓ FAQ
+
+<details>
+<summary><b>Do I have to open each project for it to be archived / synced?</b></summary>
+
+No. The hooks live in your **user** settings (`~/.claude/settings.json`), so they run in every
+project you open, and each run scans **all** of `~/.claude/projects/`, not just the current
+project: whichever session triggers it, new messages from every project are archived and
+pushed. Only what changed since the last run is read (~0.1 s). The installer's backfill is
+global too.
+
+</details>
+
+<details>
+<summary><b>What happens when I install it on another computer?</b></summary>
+
+Running `python3 brain/install.py` there (with `NEON_URL` already in its `.env`):
+
+1. archives every Claude Code session that computer still has, all projects, into its own
+   local `brain.db`, and detects each session's git repo (the project folders must exist there;
+   missing ones fall back to the folder name — re-check later with `ingest.py --full`);
+2. downloads the aliases from Neon and relabels those sessions with them (`leai` or
+   `leai-cli/src` → `devleaicli`);
+3. uploads messages and sessions to Neon, already under the right project names;
+4. installs the hooks, so from then on every reply there is archived and pushed.
+
+In claude.ai, sessions from both computers then appear together under the same project. Keep in
+mind:
+
+- Only what that computer still has can be recovered: until the installer raises
+  `cleanupPeriodDays`, Claude Code there was deleting sessions older than 30 days.
+- Forgot the `.env`? Everything works locally; add it and re-run the installer to upload.
+- Each machine's local `brain.db` holds only its own sessions — the union lives in Neon, so
+  query claude.ai to see both. Local Claude Code searches see that machine only.
+- The first sync takes seconds to a couple of minutes depending on volume; later ones only send
+  what's new.
+
+</details>
+
+<details>
+<summary><b>Does a session merge with "the same session" on another computer?</b></summary>
+
+There is no such thing: Claude Code gives every conversation its own id on the machine where it
+happens. What merges is the **project** — sessions from all computers that belong to the same
+repo (same remote) or the same aliased folder end up under one project name.
+
+</details>
+
 ## 🗺️ Roadmap
 
 - [x] Incremental, idempotent archiver for all Claude Code surfaces

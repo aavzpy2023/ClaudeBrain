@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""ClaudeBrain command line. As a plugin, Claude Code puts this folder on the Bash tool's PATH."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from brain.cli import main
+
+main()

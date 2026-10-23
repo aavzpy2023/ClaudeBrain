@@ -1,23 +1,24 @@
 ---
-name: claude-brain
 description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X" — or when another task needs a project's past decisions as context.
+allowed-tools: Bash(claude-brain *)
 ---
 
-# claude-brain: recall from past sessions
+# ClaudeBrain: recall from past sessions
 
 Every Claude Code session is archived automatically (after every reply, by a hook) into
-`~/.local/share/claude-brain/brain.db`. Query it by running the script with its **full literal
-path** below — the user pre-approved exactly this command prefix, so don't use a shell variable,
-`cd`, or a pipe in front of it, or the call will prompt for permission:
+`~/.local/share/claude-brain/brain.db`. Query it with this exact command — it is pre-approved
+as written, so don't put a shell variable, `cd`, or a pipe in front of it, or the call will
+prompt for permission:
 
 ```
-{{BRAIN_QUERY}} <command> [options]
+claude-brain <command> [options]
 ```
 
-In the table, `B` stands for that full command.
+In the table, `B` stands for that command. `claude-brain status` shows what is archived.
 
-A project is the session's folder name, normalized (lowercase, no accents/symbols, leading
-year dropped): `2026-ML vs GNN` and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
+A session's project is its git repo (by remote, so clones and subfolders match) or else its
+folder name, normalized (lowercase, no accents/symbols, leading year dropped): `2026-ML vs GNN`
+and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
 
 ## Commands
 
@@ -29,7 +30,8 @@ year dropped): `2026-ML vs GNN` and `MLvsGNN` are both `mlvsgnn`. Partial names 
 | Read one session (condensed) | `B session <id-prefix> [--after TS] [--max-chars N] [--tools]` |
 | Project timeline + latest digest | `B project P [--since DATE]` |
 | Cache a distilled summary | `B save-digest project P <<'EOF'` … `EOF` (or `session <id>`) |
-| Group/rename folders | `B alias <folder name or path> <name>` — applies to that folder name at any depth, on every machine (synced); no args lists aliases |
+| Group/rename projects | `B alias <folder name, git remote or path> <name>` — applies at any depth, on every machine (synced); no args lists aliases |
+| Import claude.ai chats | `B import <export folder or zip> [--inspect]` (the user downloads the export first) |
 
 Sources (`--source`): `cli`, `claude-vscode`, `claude-desktop` (Claude Code) and `claude-ai`
 (chats imported from the claude.ai export: web, Desktop app, mobile).

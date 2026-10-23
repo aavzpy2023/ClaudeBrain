@@ -72,8 +72,8 @@ flowchart LR
     ING --> DB[("🧠 brain.db<br/>SQLite + FTS5")]
     EXPORT(["📦 claude.ai data export"]) -->|"brain/importer.py (by hand)"| DB
 
-    YOU(["🙋 You: 'what did we decide about X?'"]) --> SKILL["claude-brain skill"]
-    SKILL -->|"brain/query.py"| DB
+    YOU(["🙋 You: 'what did we decide about X?'"]) --> SKILL["/brain:recall skill"]
+    SKILL -->|"claude-brain"| DB
     DB --> ANS(["📄 Answer · report · resume command"])
     SKILL -.->|save-digest| DB
 
@@ -148,68 +148,87 @@ erDiagram
 
 ## 🚀 Installation
 
-> Requirements: Python 3.10+ with SQLite FTS5 (any python.org / distro build), Claude Code.
-> For the cloud mirror also [uv](https://docs.astral.sh/uv/). Linux and macOS are tested;
-> Windows is supported (see below) but not yet tested on a real machine.
+> Requirements: Claude Code, and `python3` 3.10+ with SQLite FTS5 (any python.org / distro
+> build). For the optional cloud mirror also [uv](https://docs.astral.sh/uv/).
+
+### As a Claude Code plugin (recommended)
+
+```text
+/plugin install brain --marketplace aavzpy2023/ClaudeBrain
+```
+
+<sub>On Claude Code older than 2.1.275: `/plugin marketplace add aavzpy2023/ClaudeBrain`, then
+`/plugin install brain@aavzpy2023`.</sub>
+
+That's it — **everything runs locally**:
+
+- Archiving starts with Claude's next reply, in every project. The first run backfills the
+  history Claude Code still has on disk (all projects at once), so nothing waits for you to open
+  a project.
+- Ask about past work and the `/brain:recall` skill answers; the `claude-brain` command is on
+  Claude's PATH while the plugin is enabled.
+- The database lives in `~/.local/share/claude-brain/brain.db`, outside the plugin, so updates
+  and uninstalls never touch it.
+
+Then, optionally:
+
+| Command | What it does |
+|---|---|
+| `/brain:setup` | Shows what's archived and offers the two recommended settings: `cleanupPeriodDays` 3650 (Claude Code otherwise deletes transcripts after 30 days) and a permanent permission for `claude-brain`, so recall never prompts. A plugin can't change your settings by itself, so it asks |
+| `/brain:cloud` | Walks you through the cloud mirror below, step by step |
+
+<details>
+<summary><b>Manual install</b> — Windows, or without plugins</summary>
+
+The plugin's hooks call `python3`, which most Windows installs don't have. The manual installer
+writes hooks with the exact interpreter that runs it, so use it there (or if you don't use
+plugins). **Use one or the other, not both** — both would run the hooks.
 
 ```bash
 git clone git@github.com:aavzpy2023/ClaudeBrain.git ~/Projects/ClaudeBrain
-cd ~/Projects/ClaudeBrain
-
-# optional — only for the cloud mirror (see below): owner connection string of your Neon DB
-mkdir -p ~/.config/claude-brain
-printf 'NEON_URL=%s\n' 'postgresql://…' > ~/.config/claude-brain/.env
-chmod 600 ~/.config/claude-brain/.env
-
-python3 brain/install.py
+python3 ~/Projects/ClaudeBrain/brain/install.py          # Windows: py -3 brain\install.py
 ```
-
-The installer, safe to re-run at any time:
 
 | Step | What it does |
 |---|---|
-| Skill | Renders `skill/SKILL.md` with this machine's paths into `~/.claude/skills/claude-brain/` |
-| Hooks | Adds an async `Stop` hook (ingest, then sync if Neon is configured) and a `SessionEnd` hook (ingest) |
-| Permission | Allows the skill's exact `query.py` command, so queries never prompt |
-| Retention | Raises `cleanupPeriodDays` to 3650 so Claude Code stops deleting transcripts |
-| Backfill | Archives everything Claude Code still has on disk (`ingest.py --full`) |
-| Cloud | With `NEON_URL`: creates/upgrades the remote schema and pushes everything (`sync.py --init`) |
+| Skill | Renders the skill with this machine's paths into `~/.claude/skills/claude-brain/` |
+| Hooks | Async `Stop` hook (ingest, then sync if Neon is configured) and `SessionEnd` hook (ingest), exec form, no shell |
+| Permission | Allows the skill's exact command, so queries never prompt |
+| Retention | Raises `cleanupPeriodDays` to 3650 |
+| Backfill | Archives everything Claude Code still has on disk |
+| Cloud | With `NEON_URL` already set: creates the remote schema and uploads |
 
-It merges into `~/.claude/settings.json` without touching your other settings, replaces its own
-previous hooks instead of duplicating them, and leaves a backup in
-`settings.json.bak-claudebrain`. Honors `CLAUDE_CONFIG_DIR`. Then open `/hooks` once (or restart
-Claude Code) so running sessions pick up the hooks.
+It merges into `~/.claude/settings.json` without touching your other settings, replaces its
+own previous hooks instead of duplicating them, and leaves a backup in
+`settings.json.bak-claudebrain`. Honors `CLAUDE_CONFIG_DIR`. Open `/hooks` once (or restart
+Claude Code) afterwards. `python3 brain/install.py --uninstall` removes its hooks, permission
+and skill — e.g. before switching to the plugin — and keeps your database.
 
-<details>
-<summary><b>🪟 Windows</b> (PowerShell)</summary>
-
-```powershell
-git clone git@github.com:aavzpy2023/ClaudeBrain.git $HOME\Projects\ClaudeBrain
-cd $HOME\Projects\ClaudeBrain
-
-# optional — cloud mirror
-New-Item -ItemType Directory -Force $HOME\.config\claude-brain | Out-Null
-Set-Content $HOME\.config\claude-brain\.env 'NEON_URL=postgresql://…'
-
-py -3 brain\install.py
-```
-
-Same files as on Linux, under your user folder: `%USERPROFILE%\.claude\` for Claude Code,
-`%USERPROFILE%\.local\share\claude-brain\brain.db` for the database. Hooks are written in
-exec form (`"command": "C:/…/python.exe", "args": ["…/brain/hook.py", …]`), so they don't
-depend on Git Bash or PowerShell; Claude's own queries go through its Bash tool (Git Bash),
-hence the forward-slash paths in the skill.
+On Windows the files live under your user folder: `%USERPROFILE%\.claude\` for Claude Code,
+`%USERPROFILE%\.local\share\claude-brain\brain.db` for the database. Claude's own queries go
+through its Bash tool (Git Bash), hence the forward-slash paths in the skill. Windows support is
+not yet tested on a real machine.
 
 </details>
 
 ### ☁️ Cloud mirror + claude.ai access (optional)
 
-1. Create a Neon project and put its **owner** connection string in `~/.config/claude-brain/.env`
-   (above). Never commit it, never paste it into a chat — it would end up archived.
-2. Run the installer (or `uv run brain/sync.py --init`): tables, search functions and the
-   read-only role `brain_reader` are created.
-3. Give `brain_reader` a password and add the connector and the "Brain" project on claude.ai,
-   following [`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md).
+Turn it on whenever you like; until then nothing leaves your machine. Easiest: run
+`/brain:cloud`. By hand:
+
+1. Create a free [Neon](https://neon.tech) project. Put its **owner** connection string and its
+   project id in `~/.config/claude-brain/.env`, then `chmod 600` it. Never commit it, never paste
+   it into a chat — conversations get archived.
+   ```bash
+   NEON_URL=postgresql://…            # Neon → Connect
+   NEON_PROJECT_ID=…                  # Neon → Settings → General
+   ```
+2. `claude-brain cloud init` — tables, search functions and the read-only role `brain_reader`;
+   uploads everything archived so far. From now on the hook pushes after every reply.
+3. `claude-brain cloud reader-password` — the connector logs in as `brain_reader`.
+4. `claude-brain cloud instructions` — prints the connector URL and the claude.ai "Brain"
+   project instructions, filled in with your project id
+   (template: [`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md)).
 
 What reaches the cloud is redacted first: API keys, GitHub/AWS/Google/Slack tokens, JWTs,
 private keys, passwords in URLs and `password=`/`token:`-style assignments become
@@ -238,18 +257,18 @@ you, from time to time
 - Computer off? Neon stays as of the last synced reply; claude.ai keeps answering from that.
 - Chats in claude.ai / the mobile app are **not** written automatically (no hooks there) —
   bring them in from time to time with the importer (see Usage).
-- Force a sync by hand: `uv run --project <repo> <repo>/brain/sync.py`
+- Force a sync by hand: `claude-brain sync`; see where things stand: `claude-brain status`.
 
 ### 💻 Several computers
 
-Install the same way on each machine, pointing every `.env` at the **same** Neon database.
+Install the plugin on each machine and give every `.env` the **same** Neon database.
 Each computer keeps its own local `brain.db` (its own sessions) and pushes into the shared
 mirror, so claude.ai sees the union of all of them.
 
 - No collisions: messages and sessions use Claude Code's global UUIDs; digests are keyed by
   `<hostname>:<local id>`.
-- The first install on a new machine backfills that machine's existing transcripts (whatever
-  Claude Code hasn't deleted yet) and uploads them.
+- On a new machine, the first reply after installing backfills that machine's existing
+  transcripts (whatever Claude Code hasn't deleted yet) and uploads them.
 - **The same project adds up across machines.** A session's project is decided, most specific
   first, by: an alias on its git remote → an alias on any folder of its cwd (deepest first) →
   the repo's name (from the remote, else the repo root folder) → the cwd's last folder. The
@@ -287,9 +306,13 @@ document you asked for, or gives you the exact command to resume.
 
 ### Or use the CLI directly
 
-```bash
-Q="/usr/bin/python3 $BRAIN/brain/query.py"
+`claude-brain` is on Claude's PATH with the plugin; in your own terminal call
+`<plugin or clone folder>/bin/claude-brain`, or put that folder on your PATH.
 
+```bash
+Q=claude-brain
+
+$Q status                                     # what's archived, pending sync, retention, cloud
 $Q projects                                   # all projects, sessions, last activity
 $Q recent --project thesis --limit 5          # latest sessions (partial names work)
 $Q search "graphsage naive bayes" --since 2026-10-01
@@ -305,7 +328,7 @@ $Q alias ~/Projects/leai-cli devleaicli       # existing path: its folder name +
 ```
 
 ```text
-$ query.py project phdthesis
+$ claude-brain project phdthesis
 # project phdthesis
 
 (no digest yet)
@@ -334,8 +357,8 @@ logged in, let it finish):
 Put the zips (extracted or not) in one folder and point the importer at it, or at any one of them:
 
 ```bash
-python3 brain/importer.py ~/Downloads --inspect   # look first: counts, fields, block types
-python3 brain/importer.py ~/Downloads             # import; only the export's zips are opened
+claude-brain import ~/Downloads --inspect   # look first: counts, fields, block types
+claude-brain import ~/Downloads             # import; only the export's zips are opened
 ```
 
 - Each chat becomes a session with origin `claude-ai` (`--source claude-ai` in searches).
@@ -371,7 +394,7 @@ python3 brain/importer.py ~/Downloads             # import; only the export's zi
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's folder: transcripts, settings, skills |
 | `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror |
 | `ingest.py --root` | `~/.claude/projects` | Where transcripts are read from |
-| `ingest.py --full` | off | Re-read every file from the start (safe: deduplicated) |
+| `claude-brain ingest --full` | off | Re-read every file from the start (safe: deduplicated) |
 | `~/.local/share/claude-brain/ingest.log` | — | Hook errors end up here |
 
 **Backups:** the database is a single file. Snapshot it safely, even while it is in use:
@@ -388,30 +411,38 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 57 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 62 tests, in-memory fixtures, < 1 s
+claude plugin validate .           # plugin + marketplace manifests
+claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
 
 ```
+.claude-plugin/
+  plugin.json        plugin manifest (name "brain", shown as ClaudeBrain)
+  marketplace.json   this repo is its own marketplace
+hooks/hooks.json     Stop (async: ingest + sync) and SessionEnd (ingest) → brain/hook.py
+skills/recall/       the recall skill (/brain:recall); install.py renders it for manual installs
+commands/            /brain:setup and /brain:cloud
+bin/claude-brain     CLI on Claude's PATH while the plugin is enabled
 brain/
+  cli.py       claude-brain subcommands
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   gitrepo.py   repo root + normalized remote of a folder, straight from .git files
   importer.py  claude.ai data export → sessions with origin claude-ai
   query.py     search / sessions / projects / digests — library + CLI
-  sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
-  install.py   per-machine installer: skill, hooks, permission, backfill, first sync
+  sync.py      push to Neon (watermarks, redaction, offline-safe) — psycopg via uv
+  install.py   manual installer (Windows / no plugins), --uninstall
 remote/
   schema.sql   Postgres mirror, brain_* query functions, read-only role
-  claude_ai_instructions.md   connector URL + claude.ai project instructions
-skill/
-  SKILL.md     the claude-brain skill template ({{BRAIN_QUERY}} filled in by install.py)
+  claude_ai_instructions.md   template for the claude.ai connector + project
 tests/         synthetic transcripts, temp databases
 context.md     index for Claude: where each rule lives
 ```
 
-The query layer is plain functions over a `sqlite3.Connection`, so the planned MCP server can
-reuse it as is.
+The query layer is plain functions over a `sqlite3.Connection`, so an MCP server could reuse it
+as is.
 
 ---
 
@@ -423,13 +454,14 @@ reuse it as is.
 No. The hooks live in your **user** settings (`~/.claude/settings.json`), so they run in every
 project you open, and each run scans **all** of `~/.claude/projects/`, not just the current
 project: whichever session triggers it, new messages from every project are archived and
-pushed. Only what changed since the last run is read (~0.1 s). The installer's backfill is
+pushed. Only what changed since the last run is read (~0.1 s). The first run's backfill is
 global too.
 
 Example — a computer with 5 projects:
 
-- `install.py` archives and uploads the existing sessions of **all 5** right away, before you
-  open Claude Code at all.
+- The first Claude reply after installing (in any project) archives — and, with the cloud on,
+  uploads — the existing sessions of **all 5**. With the manual installer it happens during the
+  install itself.
 - Afterwards you work in project A while a session of project B is still running in another
   window: B's new messages go up with the next Claude reply, whether that reply is in A or in B.
   No project waits for you to open it.
@@ -439,22 +471,25 @@ Example — a computer with 5 projects:
 <details>
 <summary><b>What happens when I install it on another computer?</b></summary>
 
-Running `python3 brain/install.py` there (with `NEON_URL` already in its `.env`):
+Install the plugin there and put the same `NEON_URL` (and `NEON_PROJECT_ID`) in its `.env`.
+With the first Claude reply, the hook:
 
 1. archives every Claude Code session that computer still has, all projects, into its own
    local `brain.db`, and detects each session's git repo (the project folders must exist there;
-   missing ones fall back to the folder name — re-check later with `ingest.py --full`);
+   missing ones fall back to the folder name — re-check later with `claude-brain ingest --full`);
 2. downloads the aliases from Neon and relabels those sessions with them (`leai` or
    `leai-cli/src` → `devleaicli`);
 3. uploads messages and sessions to Neon, already under the right project names;
-4. installs the hooks, so from then on every reply there is archived and pushed.
+
+and from then on every reply there is archived and pushed. Run `claude-brain status` to watch
+it; `claude-brain sync` forces a push.
 
 In claude.ai, sessions from both computers then appear together under the same project. Keep in
 mind:
 
-- Only what that computer still has can be recovered: until the installer raises
-  `cleanupPeriodDays`, Claude Code there was deleting sessions older than 30 days.
-- Forgot the `.env`? Everything works locally; add it and re-run the installer to upload.
+- Only what that computer still has can be recovered: until `cleanupPeriodDays` is raised
+  (`/brain:setup`), Claude Code there was deleting sessions older than 30 days.
+- Forgot the `.env`? Everything works locally; add it later and the next reply uploads it all.
 - Each machine's local `brain.db` holds only its own sessions — the union lives in Neon, so
   query claude.ai to see both. Local Claude Code searches see that machine only.
 - The first sync takes seconds to a couple of minutes depending on volume; later ones only send
@@ -485,6 +520,8 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [ ] CJK-aware search (FTS5 `trigram` tokenizer / Postgres `pg_trgm`) for Chinese, Japanese, Korean
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
+- [x] Claude Code plugin + marketplace (local by default, cloud opt-in)
+- [ ] Plugin icon and a short demo GIF
 - [x] Several computers feeding one cloud mirror
 - [x] Share aliases across machines through Neon
 - [x] Windows support (exec-form hooks, both path styles) — awaiting a real-machine test
@@ -492,38 +529,50 @@ repo (same remote) or the same aliased folder end up under one project name.
 
 ## 📜 Changelog
 
-### 0.6.2 — 2026-10-23
+### 0.7.0
+- **Claude Code plugin**: `/plugin install brain --marketplace aavzpy2023/ClaudeBrain` installs
+  everything local — hooks, the `/brain:recall` skill, the `claude-brain` command. Cloud stays
+  optional: `/brain:setup` and `/brain:cloud` guide the rest.
+- `claude-brain` CLI: recall, `ingest`, `import`, `status`, `cloud init | reader-password |
+  instructions | sync`.
+- No personal data in the repo: claude.ai instructions are a template filled from
+  `NEON_PROJECT_ID`.
+- Sync runs through `uv --with psycopg` (no venv inside the plugin folder); the hook finds uv
+  itself and stays local-only until `NEON_URL` exists.
+- `install.py` kept for Windows / no plugins, now with `--uninstall`.
+
+### 0.6.2
 - Docs, skill triggers and claude.ai instructions in English; the skill now says it works in any
   language.
 - Project names keep letters of any script (`项目`, `проект`) instead of dropping non-ASCII
   letters; accents are still stripped (`Tésis` → `tesis`, `Straße` → `strasse`).
 - Documented the CJK search limitation.
 
-### 0.6.1 — 2026-10-23
+### 0.6.1
 - Importer adapted to the real 2026 export: a manifest of per-category zips, projects as one file
   each; reads only `conversations*`/`projects*` zips from a folder, deduplicates zip + extracted
   copies, keeps document titles and the conversation `summary`, drops injected prompt blocks.
 
-### 0.6.0 — 2026-10-23
+### 0.6.0
 - `brain/importer.py`: imports the claude.ai data export (zip, folder or `conversations.json`),
   idempotently; `--inspect` describes an export without importing. Chats in a claude.ai Project
   join the project of that name; others go to `claudeai`. New origin `claude-ai`.
 
-### 0.5.0 — 2026-10-23
+### 0.5.0
 - Projects follow git: sessions store their repo (`sessions.repo`, normalized remote) and the
   repo's name becomes the default project, so subfolders and differently named clones merge.
 - Aliases can target a git remote (any URL form); aliasing an existing repo path covers both its
   folder name and its remote. Remote credentials are never stored.
 - `ingest.py --full` re-checks folders that previously looked like non-repos.
 
-### 0.4.0 — 2026-10-23
+### 0.4.0
 - Aliases are keyed by **folder name** instead of absolute path (deepest matching folder wins),
   so they hold on every machine; old path aliases migrate automatically.
 - Aliases sync both ways through Neon (`aliases` table, last write wins) and relabel sessions.
 - Windows support: hooks call `brain/hook.py` in exec form (no shell), POSIX and Windows paths
   both understood, forward-slash paths in the skill and permission rule.
 
-### 0.3.0 — 2026-10-23
+### 0.3.0
 - `brain/install.py`: one-command, idempotent installer (skill rendered with local paths,
   hooks + permission merged into settings.json with backup, backfill, first sync).
 - Several computers can share one Neon mirror; remote digests keyed by `<hostname>:<id>`
@@ -531,17 +580,17 @@ repo (same remote) or the same aliased folder end up under one project name.
 - `CLAUDE_CONFIG_DIR` honored for transcripts and settings.
 - README: who updates Neon, multi-computer setup.
 
-### 0.2.1 — 2026-10-23
+### 0.2.1
 - `brain_reader` needs a password: the Neon connector logs in as that role (documented in `remote/`).
 - claude.ai connector URL now adds `category=querying`: 5 SQL tools instead of ~46 Neon
   management tools, so "my projects" is answered from the archive, not with Neon projects.
 
-### 0.2.0 — 2026-10-23
+### 0.2.0
 - Neon Postgres mirror: incremental push (`brain/sync.py`), offline-safe, secret redaction.
 - `remote/schema.sql`: accent-insensitive FTS, `brain_*` SQL functions, read-only `brain_reader` role.
 - claude.ai connector + project instructions to query the brain from web and mobile.
 
-### 0.1.0 — 2026-10-23
+### 0.1.0
 - First release: archiver, query CLI, `claude-brain` skill, `Stop` + `SessionEnd` hooks.
 - Projects from normalized folder names (leading year dropped), aliases for exceptions.
 - Custom `/rename` titles take precedence over AI-generated ones.

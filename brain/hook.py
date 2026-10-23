@@ -1,7 +1,8 @@
 """Claude Code hook entry point: archive new messages, then optionally push to Neon.
 
-Usage (from settings.json, exec form, no shell — same on Linux, macOS and Windows):
-  python brain/hook.py [--sync --uv /path/to/uv]
+Usage (exec-form hook, no shell — same on Linux, macOS and Windows):
+  python brain/hook.py [--sync [--uv /path/to/uv]]
+--sync pushes to Neon only when NEON_URL is configured; uv is found on its own if not given.
 Never fails the hook: errors go to the log next to the database, exit code is always 0.
 """
 import argparse
@@ -15,14 +16,14 @@ if __package__ in (None, ""):
 
 from brain.db import connect, db_path
 from brain.ingest import DEFAULT_ROOT, ingest
+from brain.sync import find_uv, neon_url, uv_command
 
-REPO = Path(__file__).resolve().parent.parent
 SYNC_TIMEOUT = 100  # below the hook's own 120 s timeout
 
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--sync", action="store_true", help="push to Neon after ingesting")
+    parser.add_argument("--sync", action="store_true", help="push to Neon after ingesting, if configured")
     parser.add_argument("--uv", help="uv executable used to run the sync with its dependencies")
     args = parser.parse_args(argv)
 
@@ -35,15 +36,17 @@ def main(argv=None) -> None:
             conn.close()
         except Exception:
             traceback.print_exc(file=err)
-        if args.sync and args.uv:
-            try:
-                subprocess.run(
-                    [args.uv, "run", "--quiet", "--project", str(REPO),
-                     str(REPO / "brain" / "sync.py"), "--quiet"],
-                    stdout=subprocess.DEVNULL, stderr=err, timeout=SYNC_TIMEOUT,
-                )
-            except Exception:
-                traceback.print_exc(file=err)
+        if not (args.sync and neon_url()):
+            return  # local-only install: nothing else to do
+        uv = args.uv or find_uv()
+        if not uv:
+            print("sync skipped: NEON_URL is set but uv was not found", file=err)
+            return
+        try:
+            subprocess.run(uv_command(uv, "--quiet"), stdout=subprocess.DEVNULL, stderr=err,
+                           timeout=SYNC_TIMEOUT)
+        except Exception:
+            traceback.print_exc(file=err)
 
 
 if __name__ == "__main__":

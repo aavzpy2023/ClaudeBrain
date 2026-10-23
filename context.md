@@ -32,16 +32,18 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
 - **Digests = lazy cache of distilled summaries.** Written by Claude after reading a project;
   `covers_until_ts` marks what is covered so the next report only reads newer sessions.
   Files: `brain/query.py::save_digest`, `brain/query.py::project`
-- **Integration is done by the installer, never by hand.** `install.py` renders the skill
-  template (`{{BRAIN_QUERY}}` → this machine's quoted python + query.py) into
-  `~/.claude/skills/claude-brain/` (replacing old symlinks), and merges into settings.json an async
-  `Stop` hook (`hook.py --sync --uv …`) + `SessionEnd` hook (`hook.py`), both in exec form
-  (command + args, no shell) so they work on Windows too; plus the query permission rule
-  (forward-slash paths for Git Bash) and `cleanupPeriodDays` 3650. Its own hooks/rules are
-  recognized by `brain/ingest.py`|`brain/hook.py` / `brain/query.py` and replaced, so re-runs
-  are idempotent. Honors `CLAUDE_CONFIG_DIR`. `hook.py` logs errors to
-  `~/.local/share/claude-brain/ingest.log` and always exits 0.
-  Files: `brain/install.py::merge_settings`, `brain/install.py::install_skill`, `brain/hook.py`, `skill/SKILL.md`
+- **Two install paths, never both.** (1) Plugin (default): repo root = plugin root = its own
+  marketplace (`.claude-plugin/plugin.json` name `brain` — `claude-*` plugin names are reserved;
+  `marketplace.json` name `aavzpy2023`, source `./`). `hooks/hooks.json` runs
+  `python3 ${CLAUDE_PLUGIN_ROOT}/brain/hook.py [--sync]` (exec form); `bin/claude-brain` is on
+  Claude's PATH; `skills/recall/SKILL.md` calls bare `claude-brain` and pre-approves it via
+  `allowed-tools`; `commands/setup.md` and `commands/cloud.md` do what a plugin can't (edit
+  settings, guide cloud setup). Local-only until NEON_URL exists. (2) `install.py` for Windows /
+  no plugins: renders the same skill replacing bare `claude-brain` with this machine's
+  `python bin/claude-brain`, merges exec-form hooks + permission + retention into settings.json
+  (recognized by `brain/ingest.py`|`brain/hook.py` / `brain/query.py`|`bin/claude-brain`),
+  `--uninstall` reverses it. `hook.py` logs to `~/.local/share/claude-brain/ingest.log`, exits 0.
+  Files: `.claude-plugin/plugin.json`, `hooks/hooks.json`, `skills/recall/SKILL.md`, `bin/claude-brain`, `brain/cli.py`, `brain/install.py::render_skill`, `brain/install.py::merge_settings`
 - **Cloud mirror (optional).** `sync.py` pushes SQLite → Neon after each ingest (Stop hook only,
   async): messages/digests by rowid/id watermark in `sync_state`, sessions fully upserted; offline
   = no-op. Text is redacted before upload. psycopg is the only dependency and only sync needs it.
@@ -49,7 +51,10 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   needs a password). Several machines may push to one mirror: remote digests are keyed by
   `origin` = `<hostname>:<local id>`; folder aliases sync both ways (`sync_aliases`, last write
   wins by `updated_at`) before sessions are pushed.
-  Files: `brain/sync.py::redact`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
+  Sync runs as `uv run --no-project --with psycopg sync.py` (`sync.uv_command`) — never a venv in
+  the repo/plugin folder. `remote/claude_ai_instructions.md` is a template (`{{NEON_PROJECT_ID}}`)
+  rendered by `sync.py --claude-ai`; no personal ids in the repo.
+  Files: `brain/sync.py::redact`, `brain/sync.py::uv_command`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
 - **claude.ai importer.** Official export → sessions with entrypoint `claude-ai`, session id =
   conversation uuid, message uuid kept (`<conv>:<i>` if missing), `INSERT OR IGNORE` so re-imports
   only add. Pseudo cwd `claude.ai/<Project name>` (or `claude.ai`) + `repo_root=''` lets

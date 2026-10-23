@@ -1,11 +1,14 @@
 """Push the local brain to Neon Postgres, redacting secrets. Safe to run offline (no-op).
 
-Usage: uv run brain/sync.py [--init] [--quiet]
-Reads NEON_URL from the environment or ~/.config/claude-brain/.env.
+Usage: uv run brain/sync.py [--init] [--reader-password] [--quiet]
+       python3 brain/sync.py --claude-ai [--project-id ID]   (no database access, no psycopg)
+Reads NEON_URL (and NEON_PROJECT_ID) from the environment or ~/.config/claude-brain/.env.
 """
 import argparse
 import os
 import re
+import secrets
+import shutil
 import socket
 import sqlite3
 import sys
@@ -19,6 +22,8 @@ from brain.db import connect, relabel_sessions
 
 ENV_FILE = Path.home() / ".config" / "claude-brain" / ".env"
 SCHEMA_FILE = Path(__file__).resolve().parent.parent / "remote" / "schema.sql"
+INSTRUCTIONS_FILE = SCHEMA_FILE.with_name("claude_ai_instructions.md")
+PSYCOPG = "psycopg[binary]>=3.2"
 BATCH = 2000
 
 _SECRETS = [
@@ -44,15 +49,52 @@ def redact(text: str) -> str:
     return text
 
 
-def neon_url(env_file: Path = ENV_FILE) -> str | None:
-    if os.environ.get("NEON_URL"):
-        return os.environ["NEON_URL"]
+def env_value(key: str, env_file: Path | None = None) -> str | None:
+    """A setting from the environment, else from the .env file (KEY=value, quotes optional)."""
+    if os.environ.get(key):
+        return os.environ[key]
     try:
-        content = env_file.read_text()
+        content = (env_file or ENV_FILE).read_text()  # looked up per call, so tests can redirect it
     except OSError:
         return None
-    match = re.search(r"^\s*NEON_URL\s*=\s*[\"']?([^\"'\s]+)", content, re.M)
+    match = re.search(rf"^\s*{re.escape(key)}\s*=\s*[\"']?([^\"'\s]+)", content, re.M)
     return match[1] if match else None
+
+
+def neon_url(env_file: Path | None = None) -> str | None:
+    return env_value("NEON_URL", env_file)
+
+
+def find_uv() -> str | None:
+    """uv on PATH, else where its installers put it (hooks may run with a minimal PATH)."""
+    found = shutil.which("uv")
+    if found:
+        return found
+    for candidate in (Path.home() / ".local" / "bin" / "uv", Path.home() / ".cargo" / "bin" / "uv"):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def uv_command(uv: str, *args: str) -> list[str]:
+    """Run this script with psycopg supplied by uv, without creating a venv inside the repo
+    (a plugin's install folder is replaced on every update)."""
+    return [uv, "run", "--quiet", "--no-project", "--with", PSYCOPG, str(Path(__file__).resolve()), *args]
+
+
+def claude_ai_instructions(project_id: str) -> str:
+    """The connector URL + project instructions for claude.ai, filled with the user's project."""
+    return INSTRUCTIONS_FILE.read_text().replace("{{NEON_PROJECT_ID}}", project_id)
+
+
+def set_reader_password(remote) -> None:
+    """Give brain_reader a random password: the Neon connector logs in as that role. Never shown;
+    Neon hands it to the connector itself. Re-running rotates it (reconnect the connector)."""
+    from psycopg import sql
+
+    remote.execute(sql.SQL("ALTER ROLE brain_reader WITH LOGIN PASSWORD {}").format(
+        sql.Literal(secrets.token_urlsafe(32))))
+    remote.commit()
 
 
 def _watermark(local: sqlite3.Connection, key: str) -> int:
@@ -175,8 +217,21 @@ def sync_aliases(local: sqlite3.Connection, remote) -> int:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--init", action="store_true", help="create/upgrade the remote schema first")
+    parser.add_argument("--reader-password", action="store_true",
+                        help="set a random password on brain_reader (needed once by the connector)")
+    parser.add_argument("--claude-ai", action="store_true",
+                        help="print the claude.ai connector setup for your Neon project and exit")
+    parser.add_argument("--project-id", help="Neon project id (default: NEON_PROJECT_ID)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.claude_ai:
+        project_id = args.project_id or env_value("NEON_PROJECT_ID")
+        if not project_id:
+            sys.exit(f"error: pass --project-id or set NEON_PROJECT_ID (env or {ENV_FILE}); "
+                     "it's in the Neon console, Settings → General")
+        print(claude_ai_instructions(project_id))
+        return
 
     url = neon_url()
     if not url:
@@ -198,6 +253,11 @@ def main(argv=None) -> None:
         if args.init:
             remote.execute(SCHEMA_FILE.read_text())
             remote.commit()
+        if args.reader_password:
+            set_reader_password(remote)
+            if not args.quiet:
+                print("brain_reader has a new password (not shown); reconnect the claude.ai connector "
+                      "if it was already set up")
         sync_aliases(local, remote)  # before sessions, so relabelled projects go up in this run
         sent = push_messages(local, remote)
         push_sessions(local, remote)

@@ -2,7 +2,12 @@
 
 ## 1. Connector (one time)
 
-Settings → Connectors → **Add custom connector**:
+First give the read-only role a password (the connector logs in as it; Neon supplies the
+password itself, you never type it): run `ALTER ROLE brain_reader WITH LOGIN PASSWORD
+'<long random string>';` as the owner, e.g. in the Neon SQL editor. Without it every query
+fails with "missing authentication credentials".
+
+Then Settings → Connectors → **Add custom connector**:
 
 - Name: `ClaudeBrain`
 - URL:

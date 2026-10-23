@@ -339,6 +339,7 @@ reuse it as is.
 ## 📜 Changelog
 
 ### 0.2.1 — 2026-10-23
+- `brain_reader` needs a password: the Neon connector logs in as that role (documented in `remote/`).
 - claude.ai connector URL now adds `category=querying`: 5 SQL tools instead of ~46 Neon
   management tools, so "my projects" is answered from the archive, not with Neon projects.
 

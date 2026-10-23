@@ -114,6 +114,9 @@ $$;
 
 -- Read-only role for the MCP connector (?roleName=brain_reader). Created here with SQL on
 -- purpose: Console-created roles join neon_superuser and can read everything.
+-- The MCP logs in as this role, so it needs a password; set it once, outside this file:
+--   ALTER ROLE brain_reader WITH LOGIN PASSWORD '<random>';
+-- Without one the connector fails with "missing authentication credentials".
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'brain_reader') THEN

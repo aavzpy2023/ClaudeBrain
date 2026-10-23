@@ -49,7 +49,13 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   `origin` = `<hostname>:<local id>`; folder aliases sync both ways (`sync_aliases`, last write
   wins by `updated_at`) before sessions are pushed.
   Files: `brain/sync.py::redact`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
+- **claude.ai importer.** Official export → sessions with entrypoint `claude-ai`, session id =
+  conversation uuid, message uuid kept (`<conv>:<i>` if missing), `INSERT OR IGNORE` so re-imports
+  only add. Pseudo cwd `claude.ai/<Project name>` (or `claude.ai`) + `repo_root=''` lets
+  `project_for`/aliases name it and keeps the repo resolver off. Format is undocumented and the
+  conversation→project link may be absent; parsing is defensive and `--inspect` exists for that.
+  Files: `brain/importer.py::import_export`, `brain/importer.py::message_text`, `brain/importer.py::load_export`
 - **README is the living doc.** Every user-visible change updates its Roadmap checkboxes and adds
   a Changelog entry in the same commit.
   Files: `README.md`
-- **Not built yet:** importer for the claude.ai data export (`conversations.json`).
+

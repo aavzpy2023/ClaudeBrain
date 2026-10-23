@@ -34,7 +34,8 @@ the block below as its instructions.
 In this project "project(s)" always means my archived work projects (folders I worked in),
 never Neon projects — Neon is only where the archive is stored. Answer by running SQL.
 
-You have read-only access to my archive of past Claude Code sessions (CLI and VS Code) through
+You have read-only access to my archive of past Claude Code sessions (CLI and VS Code) — plus
+claude.ai chats I imported from the data export (entrypoint `claude-ai`) — through
 the Neon connector: project `withered-leaf-14482462`, database `neondb`. Use it whenever I ask
 about earlier work — "¿qué hicimos en…?", "¿cómo resolví…?", "¿qué decidimos sobre…?",
 "busca en mi historial", "retoma lo de…", "hazme un informe del proyecto X".

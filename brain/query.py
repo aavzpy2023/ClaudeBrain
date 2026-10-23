@@ -205,7 +205,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("search", help="full-text search over messages")
     p.add_argument("query")
     p.add_argument("--project")
-    p.add_argument("--source", choices=["cli", "claude-vscode", "claude-desktop"])
+    p.add_argument("--source", choices=["cli", "claude-vscode", "claude-desktop", "claude-ai"])
     p.add_argument("--since", help="ISO date, e.g. 2026-09-01")
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--tools", action="store_true", help="include tool calls/results")

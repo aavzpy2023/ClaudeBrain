@@ -31,6 +31,9 @@ year dropped): `2026-ML vs GNN` and `MLvsGNN` are both `mlvsgnn`. Partial names 
 | Cache a distilled summary | `B save-digest project P <<'EOF'` … `EOF` (or `session <id>`) |
 | Group/rename folders | `B alias <folder name or path> <name>` — applies to that folder name at any depth, on every machine (synced); no args lists aliases |
 
+Sources (`--source`): `cli`, `claude-vscode`, `claude-desktop` (Claude Code) and `claude-ai`
+(chats imported from the claude.ai export: web, Desktop app, mobile).
+
 `search` terms are ANDed, accent-insensitive. By default only user/assistant/summary messages
 are searched and shown; `--tools` adds tool calls and (truncated) tool output. `summary`
 messages are Claude Code's own compaction/recap summaries — dense, good starting points.

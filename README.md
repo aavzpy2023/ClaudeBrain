@@ -44,6 +44,7 @@ and shows you the result.**
 |---|---|
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
+| 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
 | 🔍 **Full-text search** | SQLite FTS5, accent-insensitive (`regresion` finds `regresión`), ranked with BM25, with highlighted snippets. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -224,8 +225,8 @@ closing a session (SessionEnd hook)
   credential that can write, and it never leaves the machine.
 - Offline? Archiving keeps working locally; the next reply with internet uploads the backlog.
 - Computer off? Neon stays as of the last synced reply; claude.ai keeps answering from that.
-- Chats in claude.ai / the mobile app are **not** written to the brain (no hooks there) — they
-  stay in claude.ai's own history. See the roadmap's importer.
+- Chats in claude.ai / the mobile app are **not** written automatically (no hooks there) —
+  bring them in from time to time with the importer (see Usage).
 - Force a sync by hand: `uv run --project <repo> <repo>/brain/sync.py`
 
 ### 💻 Several computers
@@ -304,6 +305,28 @@ $ query.py project phdthesis
 …
 ```
 
+### Importing your claude.ai chats
+
+Chats in claude.ai (web, Desktop app, mobile) have no hooks, so they come in through the official
+export: **Settings → Privacy → Export data**, wait for the email, download the `.zip`, then:
+
+```bash
+python3 brain/importer.py ~/Downloads/data-2026-….zip --inspect   # look first: counts, fields, projects
+python3 brain/importer.py ~/Downloads/data-2026-….zip             # import (zip, folder or conversations.json)
+```
+
+- Each chat becomes a session with origin `claude-ai` (`--source claude-ai` in searches).
+- A chat inside a claude.ai Project goes to the project of that name, so the claude.ai Project
+  "PhD Thesis" and the Claude Code folder `PhD Thesis` add up in `phdthesis`; aliases apply.
+  Chats outside any Project — or if the export doesn't say which Project a chat belongs to,
+  which has been reported — go to `claudeai`.
+- Messages keep their text, tool calls (truncated like Claude Code's), attachment names plus the
+  start of their extracted text, and file names. Thinking is dropped.
+- Re-import a newer export whenever you like: only new messages are added. The next sync (the
+  next Claude Code reply, or `sync.py`) uploads them to Neon.
+- The export format is undocumented and may change; `--inspect` shows what yours contains.
+  Project knowledge files are not in the export.
+
 ### Resuming an old conversation
 
 | Situation | What happens |
@@ -336,7 +359,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest            # 49 tests, in-memory fixtures, < 1 s
+uv run pytest            # 55 tests, in-memory fixtures, < 1 s
 ```
 
 ```
@@ -345,6 +368,7 @@ brain/
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   gitrepo.py   repo root + normalized remote of a folder, straight from .git files
+  importer.py  claude.ai data export → sessions with origin claude-ai
   query.py     search / sessions / projects / digests — library + CLI
   sync.py      push to Neon (watermarks, redaction, offline-safe) — needs psycopg
   install.py   per-machine installer: skill, hooks, permission, backfill, first sync
@@ -426,7 +450,8 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Resume workflow (native `--resume` or from the archive)
 - [x] **claude.ai access** — Neon mirror + official Neon MCP connector, read-only
 - [ ] Save digests from claude.ai (write grant on `digests` only, pulled back to local)
-- [ ] **claude.ai importer** — ingest the official data export (`conversations.json`) for non-Code chats
+- [x] **claude.ai importer** — the official data export (`conversations.json`) for non-Code chats
+- [ ] Validate the importer against a real export (format undocumented)
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Several computers feeding one cloud mirror
@@ -435,6 +460,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.6.0 — 2026-10-23
+- `brain/importer.py`: imports the claude.ai data export (zip, folder or `conversations.json`),
+  idempotently; `--inspect` describes an export without importing. Chats in a claude.ai Project
+  join the project of that name; others go to `claudeai`. New origin `claude-ai`.
 
 ### 0.5.0 — 2026-10-23
 - Projects follow git: sessions store their repo (`sessions.repo`, normalized remote) and the
@@ -480,8 +510,8 @@ repo (same remote) or the same aliased folder end up under one project name.
 
 - Only what Claude Code still had on disk when ClaudeBrain was installed can be backfilled;
   transcripts already removed by the 30-day cleanup are gone.
-- Claude Desktop / claude.ai **chat** conversations (non-Code) live on Anthropic's servers and
-  are not archived yet — see the roadmap.
+- Claude Desktop / claude.ai **chat** conversations (non-Code) only arrive when you import an
+  export; there is no automatic capture for them.
 - Tool outputs are truncated by design; the archive preserves the conversation, not every
   byte of every command output.
 - Transcripts may contain secrets you pasted into a session. The local database keeps them

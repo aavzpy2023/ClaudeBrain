@@ -47,6 +47,9 @@ def commands(python: str, repo: Path, uv: str | None) -> dict:
         "session_context": {"type": "command", "command": _posix(python),
                             "args": [_posix(repo / "brain" / "context.py"), "--hook"], "timeout": 10},
         "stop": background,
+        # Synchronous so its notice reaches the user; exits at once while the briefing is off.
+        "stop_context": {"type": "command", "command": _posix(python),
+                         "args": [_posix(repo / "brain" / "context.py"), "--stop-hook"], "timeout": 5},
         "session_end": {"type": "command", "command": _posix(python), "args": [hook], "timeout": 120},
         "query": f"{shlex.quote(_posix(python))} {shlex.quote(_posix(repo / 'bin' / 'claude-brain'))}",
     }
@@ -61,7 +64,7 @@ def merge_settings(settings: dict, cmds: dict) -> dict:
     """Return settings with ClaudeBrain's hooks, permission and retention set; others untouched."""
     hooks = settings.setdefault("hooks", {})
     for event, ours in (("SessionStart", [cmds["session_start"], cmds["session_context"]]),
-                        ("Stop", [cmds["stop"]]), ("SessionEnd", [cmds["session_end"]])):
+                        ("Stop", [cmds["stop"], cmds["stop_context"]]), ("SessionEnd", [cmds["session_end"]])):
         groups = [g for g in hooks.get(event, []) if not any(_is_ours(h) for h in g.get("hooks", []))]
         groups.append({"hooks": ours})
         hooks[event] = groups

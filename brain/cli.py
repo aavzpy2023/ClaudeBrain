@@ -38,8 +38,10 @@ Archive:
   status                          what is archived, pending sync, retention, cloud setup
   browse [--port N]               explore it in your browser (Datasette via uv; your own terminal)
 
-Session briefing (optional, off by default):
-  context on [N] | off            start new sessions with your latest N (default 3) sessions there
+Session continuity (optional, off by default):
+  context on [N] | off            briefing of your latest N (default 3) sessions there, handoff
+                                  after /clear, heads-up when the context passes 120k tokens
+  context warn <K> | off          set or silence that heads-up (thousands of tokens)
   context status | preview        show the setting / what this folder would get
 
 MCP server (optional, off by default; for Claude Desktop and other agents, needs uv):

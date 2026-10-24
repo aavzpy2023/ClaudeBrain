@@ -91,12 +91,18 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   `mcp_setup.record_root()` on every hook run, so plugin updates don't break client configs.
   `mcp_setup` edits only the `claude-brain` entry of Claude Desktop's config (backup kept).
   Files: `brain/mcp_server.py`, `brain/mcp_launch.py`, `brain/mcp_setup.py::enable`, `brain/mcp_setup.py::record_root`
-- **Session briefing is opt-in and must stay cheap.** A synchronous SessionStart hook
-  (`context.py --hook`, timeout 10 s) emits `additionalContext` listing the latest N sessions of
-  the cwd's project (same naming as ingest: `find_repo` + `project_for`). Off unless
-  `<state dir>/context` holds N; only for `source` startup/clear; local DB only, no ingest or
-  network, swallows every error. Titles only — never message text.
-  Files: `brain/context.py::briefing`, `brain/context.py::run_hook`, `brain/db.py::project_of_cwd`, `hooks/hooks.json`, `brain/install.py::commands`
+- **Session continuity is opt-in and must stay cheap.** One switch (`<state dir>/context` holds N)
+  turns on three things, all local, no network, swallowing every error:
+  a synchronous SessionStart hook (`context.py --hook`, timeout 10 s) whose `additionalContext` is
+  the briefing on startup (latest N sessions of the cwd's project, titles only), a handoff card on
+  `clear` (the most recently written other transcript in the same Claude Code folder: ingested
+  first with `ingest(paths=…)`, then its last requests, ending, edited files, commits) and a
+  transcript pointer on `compact`; resume gets nothing. A synchronous Stop hook
+  (`--stop-hook`, timeout 5 s) reads the last main-chain `usage` from the transcript's tail and
+  prints a `systemMessage` (user only, no tokens) when the context enters a higher band
+  (threshold `context-warn`, default 120k, then every 40k); bands per session in
+  `context-bands.json`, so a compaction re-arms it.
+  Files: `brain/context.py::hook_output`, `brain/context.py::handoff`, `brain/context.py::stop_output`, `brain/context.py::context_tokens`, `brain/ingest.py::ingest`, `brain/db.py::project_of_cwd`, `hooks/hooks.json`, `brain/install.py::commands`
 - **`blame` matches files by repo-relative path, anchored to the session's folder.** `blame.py`
   runs over any read API (primitives `file_mentions` / `sessions_meta` / `user_prompts` in
   `query.py` and `remote.py`): candidates by substring (`instr`/`strpos`, both separator

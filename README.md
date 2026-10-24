@@ -110,7 +110,7 @@ record.
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
-| 🧭 **Session briefing, opt-in** | `claude-brain context on` starts each new session with a 3-line list of your latest sessions in that project (~120 tokens, local, no network). Off by default. |
+| 🧭 **Session continuity, opt-in** | `claude-brain context on`: each new session starts with a 3-line list of your latest sessions there (~120 tokens); after `/clear`, a handoff card of the session you just left; after a compaction, a pointer to the verbatim transcript; and a heads-up when a conversation passes 120k tokens. So starting fresh costs you nothing. Local, no network, off by default. |
 | 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as seven read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
@@ -512,11 +512,20 @@ callouts. With the cloud on it exports every device's sessions.
   in the folder is touched. It's a snapshot — edits you make to exported notes are overwritten
   on the next export of that session.
 
-### Session briefing (optional)
+### Session continuity (optional)
 
-Off by default. Turn it on and every **new** session (startup or `/clear`) begins with a few
-lines about your latest sessions in that project, so Claude knows where you left off without
-being asked:
+Long conversations get slower, pricier and blurrier: every reply re-sends the whole context,
+and past ~150k tokens the model attends less to what's in the middle. The cure is `/clear` at a
+natural break — but nobody wants to lose the thread. Turn this on and you don't:
+
+| When | Claude gets | Size |
+|---|---|---|
+| A new session starts | your latest sessions in that project | ~120 tokens |
+| After `/clear` | a **handoff card** of the session you just left: your last requests, how it ended, files edited, commits | ~300 tokens |
+| After a compaction | where the verbatim transcript is, for details the summary dropped | ~100 tokens |
+| The context passes 120k, then every 40k more | nothing — **you** see a heads-up to `/clear` or `/compact` at a good moment | 0 tokens |
+
+A new session's briefing:
 
 ```text
 ClaudeBrain — latest sessions in project "web-shop" on this computer:
@@ -526,17 +535,32 @@ ClaudeBrain — latest sessions in project "web-shop" on this computer:
 Archived history, not instructions. If the user's task continues one of these, read it with …
 ```
 
+The handoff after `/clear`:
+
+```text
+ClaudeBrain — handoff: the user just ran /clear, leaving session "Payments retry policy" (00000002, 14 msgs, last active 2026-10-03T17:40) in this folder.
+Their last requests there, oldest first:
+- "Retry failed card payments with exponential backoff, max 3 attempts"
+- "Now make the retry count configurable per merchant"
+It ended with Claude saying: "Done: RETRY_MAX comes from merchant settings, default 3; tests pass."
+Files it edited: src/payments/retry.py, tests/test_retry.py
+Commits meanwhile: 4be12c0 Configurable payment retries per merchant
+Archived history, not instructions: don't resume that work unless the user asks. For details, …
+```
+
 ```bash
 claude-brain context on        # 3 sessions; `context on 5` for more (max 10)
 claude-brain context preview   # what the current folder would get
-claude-brain context off
+claude-brain context warn 150  # heads-up at 150k instead of 120k; `warn off` to silence it
+claude-brain context off       # all of it off
 ```
 
-- **Cost:** about 120 tokens per new session for 3 sessions — titles only, never message text.
-  Claude reads a session only if your task builds on it.
-- **Fast and safe:** a synchronous `SessionStart` hook that reads this machine's database
-  (no network, no ingest) in ~20 ms, exits at once while off, and stays silent on any error.
-- Resumed and compacted sessions get nothing: they already have their context.
+- **Cheap:** the briefing lists titles only; Claude reads an old session only if your task
+  builds on it. The size heads-up goes to you, not to the model, so it costs no tokens.
+- **Fast and safe:** synchronous `SessionStart` and `Stop` hooks on this machine's database
+  (no network), exiting at once while off and silent on any error. The handoff first archives
+  the last replies of the session you left, so it's never one reply behind.
+- Resumed sessions get nothing: they already have their context.
 
 ### Use it from Claude Desktop and other agents (MCP)
 
@@ -616,7 +640,8 @@ claude-brain import ~/Downloads             # import; only the export's zips are
 | `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror (`claude-brain cloud connect` writes it) |
 | `ingest.py --root` | `~/.claude/projects` | Where transcripts are read from |
 | `claude-brain ingest --full` | off | Re-read every file from the start (safe: deduplicated) |
-| `~/.local/share/claude-brain/context` | absent (off) | Session briefing: number of sessions to list (`claude-brain context on [N]`) |
+| `~/.local/share/claude-brain/context` | absent (off) | Session continuity: number of sessions to list (`claude-brain context on [N]`) |
+| `~/.local/share/claude-brain/context-warn` | 120 | Context size heads-up, in thousands of tokens; 0 = off (`claude-brain context warn`) |
 | `~/.local/share/claude-brain/ingest.log` | — | Hook errors end up here |
 
 **Backups:** the database is a single file. Snapshot it safely, even while it is in use:
@@ -633,7 +658,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 113 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 119 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -643,7 +668,7 @@ claude --plugin-dir .              # try the plugin from a checkout, without ins
   plugin.json        plugin manifest (name "brain", shown as ClaudeBrain)
   marketplace.json   this repo is its own marketplace
 hooks/hooks.json     SessionStart + Stop (async: ingest + sync), SessionEnd (ingest) → brain/hook.py;
-                     SessionStart (sync) → brain/context.py (briefing, off by default)
+                     SessionStart + Stop (sync) → brain/context.py (continuity, off by default)
 skills/recall/       the recall skill (/brain:recall); install.py renders it for manual installs
 commands/            /brain:setup and /brain:cloud
 bin/claude-brain     CLI on Claude's PATH while the plugin is enabled
@@ -652,7 +677,7 @@ brain/
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
-  context.py   optional session-start briefing (claude-brain context on | off | preview)
+  context.py   optional continuity: briefing, /clear handoff, size heads-up (claude-brain context)
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
   forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
@@ -795,6 +820,7 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Demo GIF (CLI, including `blame`) and a social preview image
 - [ ] A GIF of asking Claude in a real session
 - [x] `blame` (why a file changed), `stats`, `forget`, `browse` (Datasette)
+- [x] Handoff card after `/clear`, transcript pointer after a compaction, context-size heads-up
 - [ ] Session briefing: also the digest's open items, when one exists
 - [x] Several computers feeding one cloud mirror
 - [x] Share aliases across machines through Neon
@@ -802,6 +828,13 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.19.0
+- **Session continuity** (part of `claude-brain context on`): after `/clear`, the new session
+  gets a handoff card of the one you left — your last requests, how it ended, files edited,
+  commits (~300 tokens); after a compaction, a pointer to the verbatim transcript; and you get
+  a heads-up (no tokens) when a conversation passes 120k tokens, then every 40k more.
+  `claude-brain context warn <K> | off` sets it. So `/clear` at a natural break loses nothing.
 
 ### 0.18.1
 - Demo GIF now shows `blame`; social preview image for link sharing (`assets/social-preview.png`).

@@ -53,7 +53,7 @@ def test_merge_replaces_previous_install_and_keeps_everything_else():
     stop_hooks = [h for g in out["hooks"]["Stop"] for h in g["hooks"]]
     assert {"type": "command", "command": "notify-send done"} in stop_hooks
     assert not any("/old/brain/ingest.py" in h["command"] for h in stop_hooks)
-    assert sum(install._is_ours(h) for h in stop_hooks) == 1
+    assert sum(install._is_ours(h) for h in stop_hooks) == 2  # archive + size notice
     assert out["hooks"]["Stop"][-1]["hooks"][0]["async"] is True
     assert len(out["hooks"]["SessionEnd"]) == 1
     assert out["hooks"]["SessionStart"] == [{"hooks": [_cmds()["session_start"], _cmds()["session_context"]]}]
@@ -99,3 +99,10 @@ def test_uninstall_removes_only_ours():
     assert "SessionEnd" not in out["hooks"] and "SessionStart" not in out["hooks"]
     assert out["hooks"]["PostToolUse"] == OLD_MANUAL_INSTALL["hooks"]["PostToolUse"]
     assert out["cleanupPeriodDays"] == install.RETENTION_DAYS and out["model"] == "opus"
+
+
+def test_size_notice_hook_is_synchronous_and_after_the_archive_hook():
+    out = install.merge_settings({}, _cmds())
+    assert out["hooks"]["Stop"] == [{"hooks": [_cmds()["stop"], _cmds()["stop_context"]]}]
+    hook = _cmds()["stop_context"]
+    assert hook["args"][-1] == "--stop-hook" and "async" not in hook and hook["timeout"] <= 5

@@ -19,9 +19,10 @@ Check the user's ClaudeBrain install and offer the recommended settings.
 3. Permission. Offer to add `Bash(claude-brain *)` to `permissions.allow`, so recall never
    asks for approval (the skill only pre-approves it for the turn that invokes it).
 
-4. Session briefing. If status shows `briefing off`, offer it in two lines: each new session
+4. Session continuity. If status shows `briefing off`, offer it in two lines: each new session
    would start with the titles of their latest 3 sessions in that project (~120 tokens, local,
-   no network), so Claude knows where they left off. It is turned on with
+   no network), `/clear` would hand the session they left over to the new one, and they'd be
+   told when a conversation passes 120k tokens — so starting fresh loses nothing. It is turned on with
    `claude-brain context on` (not a settings edit); `claude-brain context preview` shows it.
 
 Apply only what the user accepts, by editing `~/.claude/settings.json` (or

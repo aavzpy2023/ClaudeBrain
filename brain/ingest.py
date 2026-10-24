@@ -188,7 +188,9 @@ def refresh_session_stats(conn: sqlite3.Connection, session_ids) -> None:
     )
 
 
-def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = False) -> dict:
+def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = False,
+           paths: list[Path] | None = None) -> dict:
+    """Archive what's new under `root`, or only in `paths` (a quick catch-up on given files)."""
     aliases = load_aliases(conn)
     if full:  # a full pass also retries folders that looked like non-repos (maybe absent then)
         conn.execute("UPDATE sessions SET repo_root = NULL WHERE repo_root = ''")
@@ -198,7 +200,7 @@ def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = Fal
     }
     stats = {"files": 0, "sessions": 0}
     forgotten = forgotten_ids(conn)
-    for path in sorted(root.rglob("*.jsonl")):
+    for path in sorted(root.rglob("*.jsonl")) if paths is None else paths:
         st = path.stat()
         size, mtime, offset = known.get(str(path), (None, None, 0))
         if full or st.st_size < offset:

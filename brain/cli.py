@@ -23,6 +23,8 @@ Recall (local):
   projects | project <name> [--since DATE]
   save-digest project|session <key> [--covers-until TS]   (content on stdin)
   alias [<folder name | git remote | path> <project>]
+  blame <file> [--project P] [--limit N]
+                                  the sessions that edited a file, why (your request), and commits
   export <project> | --all [--out DIR] [--since DATE] [--tools] [--no-redact]
                                   Markdown notes per session + project index (Obsidian-friendly)
 
@@ -52,7 +54,8 @@ Cloud (optional: your own Neon Postgres, read from claude.ai; needs uv):
 
 Run `claude-brain <command> --help` for a command's options."""
 
-QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias", "export"}
+QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias", "export",
+                  "blame"}
 CLOUD_FLAGS = {"sync": [], "setup": ["--setup"], "status": ["--status"], "init": ["--init"],
                "reader-password": ["--reader-password"]}
 

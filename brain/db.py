@@ -185,6 +185,12 @@ def project_for(cwd: str | None, aliases: dict[str, str],
     return normalize_name(parts[-1]) if parts else "root"
 
 
+def project_of_cwd(conn: sqlite3.Connection, cwd: str) -> str:
+    """The project a session opened in `cwd` would get (same rules as ingest)."""
+    repo, root = find_repo(cwd)
+    return project_for(cwd, load_aliases(conn), repo, root)
+
+
 def load_aliases(conn: sqlite3.Connection) -> dict[str, str]:
     return {r[0]: r[1] for r in conn.execute("SELECT folder, project FROM folder_aliases")}
 

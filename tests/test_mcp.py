@@ -80,3 +80,4 @@ def test_server_answers_locally_with_redaction(root, tmp_path, monkeypatch):
     assert "GNN training" in mcp_server.project("gnn")
     assert "Entrena el modelo" in mcp_server.session(SID[:8])
     assert mcp_server.session("nope").startswith("error:")
+    assert "1 shell command(s)" in mcp_server.blame("train.py", "gnn")  # `python train.py`

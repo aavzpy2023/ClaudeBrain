@@ -203,6 +203,27 @@ def match_project(name: str, names: list[str]) -> str:
     raise LookupError(f"{name!r} is ambiguous: {', '.join(matches)}")
 
 
+def file_mentions(conn: sqlite3.Connection, project: str, needles: list[str]) -> list[dict]:
+    """Messages of a project containing any of `needles` (exact substrings), oldest first."""
+    match = " OR ".join("instr(m.text, ?) > 0" for _ in needles)
+    return [dict(r) for r in conn.execute(
+        f"""SELECT m.session_id, m.ts, m.role, m.text FROM messages m JOIN sessions s USING (session_id)
+            WHERE s.project = ? AND ({match}) ORDER BY m.ts""", (project, *needles))]
+
+
+def sessions_meta(conn: sqlite3.Connection, ids: list[str]) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        f"SELECT * FROM sessions WHERE session_id IN ({','.join('?' * len(ids))})", ids)]
+
+
+def user_prompts(conn: sqlite3.Connection, ids: list[str]) -> list[dict]:
+    """The user's own messages (no subagents) in these sessions, oldest first, clipped."""
+    return [dict(r) for r in conn.execute(
+        f"""SELECT session_id, ts, substr(text, 1, 400) AS text FROM messages
+            WHERE role = 'user' AND is_sidechain = 0 AND session_id IN ({','.join('?' * len(ids))})
+            ORDER BY ts""", ids)]
+
+
 def projects(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """SELECT project, COUNT(*) AS sessions, SUM(msg_count) AS messages,
@@ -284,7 +305,7 @@ def _session_line(s: dict) -> str:
     )
 
 
-READ_COMMANDS = {"search", "recent", "session", "projects", "project", "export"}
+READ_COMMANDS = {"search", "recent", "session", "projects", "project", "export", "blame"}
 REMOTE_OFFLINE = 75  # exit code of brain/remote.py when Neon can't be reached
 
 
@@ -318,6 +339,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("project", help="timeline + latest digest of a project")
     p.add_argument("name")
     p.add_argument("--since")
+
+    p = sub.add_parser("blame", help="the sessions that edited a file, why, and their commits")
+    p.add_argument("file", help="path of the file (relative to here, or absolute)")
+    p.add_argument("--project", help="default: the project of the current folder")
+    p.add_argument("--limit", type=int, default=10, help="sessions to show, newest first")
 
     p = sub.add_parser("export", help="write projects as Markdown notes (Obsidian-friendly)")
     p.add_argument("project", nargs="?", help="project name (partial ok); or --all")
@@ -427,6 +453,10 @@ def render(conn, args, api=None) -> str:
         say("\n## sessions (* = not covered by the digest)")
         for s in out["sessions"]:
             say(f"{'*' if s['after_digest'] else ' '} {_session_line(s)}")
+    elif args.cmd == "blame":
+        from brain import blame
+
+        blame.run(conn, api, args, say)
     elif args.cmd == "export":
         from brain import export  # imports brain.sync for redaction; keep query's import light
 

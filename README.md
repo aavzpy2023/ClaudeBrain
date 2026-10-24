@@ -79,6 +79,7 @@ device, and lets Claude distill it only when you ask — then caches that digest
 | Survives Claude Code's 30-day cleanup | Not addressed | **Yes** |
 | Markdown / Obsidian | Some are Markdown-first | **Export with properties, secrets redacted** |
 | MCP for other agents | Yes — their main interface | Optional, off by default |
+| Why a file is the way it is | Not covered | **`blame <file>`: the sessions that changed it, your request behind each change, the commits** |
 | Injects context automatically | Yes — summaries in every session | Opt-in: 3 lines (latest sessions here, ~120 tokens); the rest when you ask |
 | Semantic (meaning) search | Yes (embeddings) | Word variants + Claude's query expansion (embeddings on the roadmap) |
 | Agents captured | Several (Codex, Gemini, …) | Claude only |
@@ -96,6 +97,7 @@ record.
 | ⚡ **Automatic & invisible** | A `Stop` hook archives new messages after every Claude reply, asynchronously (~0.1 s). Nothing to remember. |
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
+| 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -105,7 +107,7 @@ record.
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
 | 🧭 **Session briefing, opt-in** | `claude-brain context on` starts each new session with a 3-line list of your latest sessions in that project (~120 tokens, local, no network). Off by default. |
-| 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as five read-only tools; off by default, one command to turn off. |
+| 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as six read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
 ---
@@ -396,6 +398,7 @@ $Q search '"paper downloader"'               # exact phrase
 $Q session f1c3077a --max-chars 8000          # condensed transcript (id prefix works)
 $Q session f1c3077a --after 2026-10-19T12:12:45Z   # next page
 $Q project mlvsgnn                            # timeline + latest digest
+$Q blame src/model.py                         # sessions that changed it, why, and commits
 $Q save-digest project mlvsgnn <<'EOF'        # cache a distilled summary
 Goal… decisions… results… open issues…
 EOF
@@ -416,6 +419,39 @@ $ claude-brain project phdthesis
 * 44705308  2026-10-17 13:56 → 2026-10-17 17:43  cli            78 msgs  Remote folders over SSH in VS Code
 …
 ```
+
+### Why is this file like this? (`blame`)
+
+`git blame` says who changed a line and when. `claude-brain blame` says **why**: the sessions
+that changed the file, the request you made right before each change, and the commits made
+during that session.
+
+```text
+$ claude-brain blame src/model.py
+# src/model.py · project mlvsgnn
+changed in 2 session(s); mentioned in 1 more
+
+33333333  cli  Port to Windows  @work-pc
+  1 edit(s)  2026-10-05 08:02
+  why  2026-10-05 08:00  "Port the model to Windows paths"
+  read: claude-brain session 33333333 --after 2026-10-05T08:00:00
+
+11111111  claude-vscode  GNN training  @laptop
+  1 edit(s), 1 shell command(s)  2026-10-01 10:01 → 2026-10-01 10:06
+  why  2026-10-01 10:00  "Add dropout to the model"
+  why  2026-10-01 10:05  "Now tune the learning rate"
+  commit  def5678  2026-10-01  Tune model
+  read: claude-brain session 11111111 --after 2026-10-01T10:00:00
+
+also mentioned in: 22222222 What does the model do?
+```
+
+- The file is matched by its path **inside the repo**, so every clone and every machine count
+  (Windows paths too); a different file with the same name in another folder doesn't.
+- Edits are Claude's Edit/Write calls; shell commands naming the file count separately — Claude
+  often edits with `sed` or scripts. Merely mentioning it lands under "also mentioned in".
+- Run it from the project folder (or pass `--project`). With the cloud on it covers every device.
+- Just ask Claude *"why is `model.py` like this?"* — the recall skill runs it for you.
 
 ### Exporting to Markdown / Obsidian
 
@@ -464,8 +500,8 @@ claude-brain context off
 
 ### Use it from Claude Desktop and other agents (MCP)
 
-An optional, **off-by-default** local MCP server exposes the archive as five read-only tools —
-`search`, `recent`, `projects`, `project`, `session` — with the recall rules built into their
+An optional, **off-by-default** local MCP server exposes the archive as six read-only tools —
+`search`, `recent`, `projects`, `project`, `session`, `blame` — with the recall rules built into their
 descriptions. With the cloud on it answers from every device, else from this machine.
 
 ```bash
@@ -557,7 +593,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 96 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 102 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -577,6 +613,7 @@ brain/
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   context.py   optional session-start briefing (claude-brain context on | off | preview)
+  blame.py     claude-brain blame: sessions that changed a file, why, and commits
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
   mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
@@ -699,6 +736,13 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.15.0
+- **`claude-brain blame <file>`**: the sessions that changed a file (Edit/Write calls and shell
+  commands, any clone, any machine, Windows paths too), the request you made before each change,
+  and the commits made during that session. Also an MCP tool and part of the recall skill.
+- Fix: a Windows path read on Linux (or the reverse) no longer resolves against the current
+  folder when looking for its git repo.
 
 ### 0.14.0
 - **Simpler, safer cloud setup.** `claude-brain cloud connect` asks for the connection string

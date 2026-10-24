@@ -105,6 +105,14 @@ def project(name: str, since: str | None = None) -> str:
 
 
 @server.tool(annotations=READ_ONLY, description=(
+    "Why a file is the way it is: the sessions that changed it (edits and shell commands), the "
+    "user's request before each change, and sessions that only mentioned it. `path` is the "
+    "file's path inside its repo (e.g. src/model.py); `project` is required here."))
+def blame(path: str, project: str, limit: int = 10) -> str:
+    return answer(["blame", path, "--project", project, "--limit", str(limit)])
+
+
+@server.tool(annotations=READ_ONLY, description=(
     "Read one session's conversation (id or unique prefix): user and assistant messages plus "
     "compaction summaries, which are dense — read them first. If the output says it was truncated, "
     "call again with `after` set to the timestamp it gives."))

@@ -13,8 +13,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect, db_path, load_aliases, project_for
-from brain.gitrepo import find_repo
+from brain.db import connect, db_path, project_of_cwd
 
 DEFAULT_COUNT = 3
 MAX_COUNT = 10
@@ -35,13 +34,8 @@ def configured_count() -> int:
         return 0
 
 
-def project_of(conn, cwd: str) -> str:
-    repo, root = find_repo(cwd)
-    return project_for(cwd, load_aliases(conn), repo, root)
-
-
 def briefing(conn, cwd: str, count: int, exclude: str | None = None) -> str | None:
-    project = project_of(conn, cwd)
+    project = project_of_cwd(conn, cwd)
     rows = conn.execute(
         "SELECT session_id, last_ts, title, msg_count FROM sessions "
         "WHERE project = ? AND msg_count > 0 AND session_id != ? "

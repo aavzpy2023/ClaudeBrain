@@ -49,10 +49,14 @@ def find_repo(cwd: str) -> tuple[str | None, str | None]:
     """(normalized remote or None, repo root path or None) for the repo containing cwd.
 
     'origin' wins, else the first remote listed; a repo without a usable remote still returns
-    its root. Missing folders, non-repos and unreadable files all give (None, None).
+    its root. Missing folders, non-repos and unreadable files all give (None, None), and so does a
+    path written for another OS (`C:\\…` read on Linux), which would otherwise resolve against
+    the current folder.
     """
     try:
         path = Path(cwd)
+        if not path.is_absolute():
+            return None, None
         for root in (path, *path.parents):
             if not (root / ".git").exists():
                 continue

@@ -1,5 +1,5 @@
 ---
-description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X", "which sessions do I have in X?" (often written "sections"/"secciones") — or when another task needs a project's past decisions as context.
+description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X", "which sessions do I have in X?" (often written "sections"/"secciones"), "why is this file/code like this?", "who changed X and why?" — or when another task needs a project's past decisions as context.
 allowed-tools: Bash(claude-brain *)
 ---
 
@@ -40,6 +40,7 @@ and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
 | Find where something was discussed | `B search "terms" [--project P] [--since 2026-09-01] [--limit N] [--tools]` |
 | Read one session (condensed) | `B session <id-prefix> [--after TS] [--max-chars N] [--tools]` |
 | Project timeline + latest digest | `B project P [--since DATE]` |
+| Why a file is the way it is | `B blame <path> [--project P] [--limit N]` — sessions that changed it (edits and shell commands), the user's request before each change, and the commits made then; run it from the project folder |
 | Cache a distilled summary | `B save-digest project P <<'EOF'` … `EOF` (or `session <id>`) |
 | Group/rename projects | `B alias <folder name, git remote or path> <name>` — applies at any depth, on every machine (synced); no args lists aliases |
 | Import claude.ai chats | `B import <export folder or zip> [--inspect]` (the user downloads the export first) |
@@ -82,6 +83,11 @@ transcript still exists:
 - Gone → continue here from the archive: read `session <id>` (page with `--after`; its
   `summary` messages are the compacted context), restate where the work stood and what was
   pending, and carry on.
+
+**Why is this code like this?** ("why did we change X?", "who touched this file?", before
+reverting or refactoring something that looks odd): `blame <path>` → the `why` lines are the
+user's own requests; read the relevant one with the `read:` command it prints. Quote the request
+and the decision, not just the diff.
 
 **Report / document / overview of a project**:
 1. `project P`. If a digest exists, it already covers everything up to `covers_until_ts`; only

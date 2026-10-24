@@ -88,6 +88,24 @@ def session(conn, session_id, after=None, roles=DEFAULT_ROLES, sidechain=False, 
     return {"session": meta, "messages": messages, "truncated": truncated}
 
 
+def file_mentions(conn, project: str, needles: list[str]) -> list[dict]:
+    match = " OR ".join("strpos(m.text, %s) > 0" for _ in needles)
+    return conn.execute(
+        f"""SELECT m.session_id, m.ts, m.role, m.text FROM messages m JOIN sessions s USING (session_id)
+            WHERE s.project = %s AND ({match}) ORDER BY m.ts""", (project, *needles)).fetchall()
+
+
+def sessions_meta(conn, ids: list[str]) -> list[dict]:
+    return conn.execute(f"SELECT {_SESSION_COLS} FROM sessions WHERE session_id = ANY(%s)", (ids,)).fetchall()
+
+
+def user_prompts(conn, ids: list[str]) -> list[dict]:
+    return conn.execute(
+        """SELECT session_id, ts, substr(text, 1, 400) AS text FROM messages
+           WHERE role = 'user' AND is_sidechain = 0 AND session_id = ANY(%s) ORDER BY ts""",
+        (ids,)).fetchall()
+
+
 def projects(conn) -> list[dict]:
     return conn.execute(
         """SELECT project, COUNT(*) AS sessions, SUM(msg_count) AS messages, MAX(last_ts) AS last_ts,

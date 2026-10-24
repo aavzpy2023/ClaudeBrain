@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from brain.db import project_for, resolve_repos, set_alias, load_aliases
@@ -45,6 +47,14 @@ def test_find_repo_without_remote_and_outside_repos(tmp_path):
     assert find_repo(str(repo)) == (None, str(repo))
     assert find_repo(str(tmp_path / "plain")) == (None, None)
     assert find_repo(str(tmp_path / "missing" / "dir")) == (None, None)
+
+
+def test_find_repo_ignores_paths_from_another_os(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)  # a relative-looking path must not resolve against this repo
+    foreign = "/home/u/proj" if os.name == "nt" else "C:\\Users\\u\\proj"
+    assert find_repo(foreign) == (None, None)
+    assert find_repo("proj") == (None, None)
 
 
 def test_find_repo_in_linked_worktree(tmp_path):

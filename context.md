@@ -96,7 +96,16 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   the cwd's project (same naming as ingest: `find_repo` + `project_for`). Off unless
   `<state dir>/context` holds N; only for `source` startup/clear; local DB only, no ingest or
   network, swallows every error. Titles only — never message text.
-  Files: `brain/context.py::briefing`, `brain/context.py::run_hook`, `hooks/hooks.json`, `brain/install.py::commands`
+  Files: `brain/context.py::briefing`, `brain/context.py::run_hook`, `brain/db.py::project_of_cwd`, `hooks/hooks.json`, `brain/install.py::commands`
+- **`blame` matches files by repo-relative path, anchored to the session's folder.** `blame.py`
+  runs over any read API (primitives `file_mentions` / `sessions_meta` / `user_prompts` in
+  `query.py` and `remote.py`): candidates by substring (`instr`/`strpos`, both separator
+  styles), then per line: Edit/Write/MultiEdit/NotebookEdit JSON path → edit; `[tool:Bash]`
+  naming the file → shell; anything else → mention. `is_same_file` requires the part before the
+  relative path to be the session's cwd or a parent of it (so `lib/src/x.py` ≠ `src/x.py`).
+  "Why" = last user message before each change. Commits (`git log --follow`, local repo) go to
+  the changing session active at commit time (+30 min). Project defaults to `project_of_cwd`.
+  Files: `brain/blame.py::blame`, `brain/blame.py::is_same_file`, `brain/query.py::file_mentions`, `brain/remote.py::file_mentions`, `brain/db.py::project_of_cwd`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

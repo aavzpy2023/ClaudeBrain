@@ -1,11 +1,21 @@
 {
   "name": "brain",
   "displayName": "ClaudeBrain",
-  "version": "0.8.0",
-  "description": "Long-term memory for Claude Code: every session archived into a local SQLite database, searchable by project and resumable. Optional cloud mirror readable from claude.ai.",
-  "author": { "name": "aavzpy2023", "url": "https://github.com/aavzpy2023" },
+  "version": "0.8.1",
+  "description": "Your entire Claude history — every device, every word, one place. Archives every Claude Code session verbatim into a local database, searchable by project and resumable; optional cloud mirror readable from claude.ai and your phone.",
+  "author": {
+    "name": "aavzpy2023",
+    "url": "https://github.com/aavzpy2023"
+  },
   "homepage": "https://github.com/aavzpy2023/ClaudeBrain",
   "repository": "https://github.com/aavzpy2023/ClaudeBrain",
   "license": "MIT",
-  "keywords": ["memory", "history", "sessions", "search", "sqlite", "recall"]
+  "keywords": [
+    "memory",
+    "history",
+    "sessions",
+    "search",
+    "sqlite",
+    "recall"
+  ]
 }

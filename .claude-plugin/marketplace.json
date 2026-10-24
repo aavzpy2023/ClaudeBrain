@@ -1,12 +1,15 @@
 {
   "name": "aavzpy2023",
-  "owner": { "name": "aavzpy2023", "url": "https://github.com/aavzpy2023" },
+  "owner": {
+    "name": "aavzpy2023",
+    "url": "https://github.com/aavzpy2023"
+  },
   "description": "Plugins by aavzpy2023",
   "plugins": [
     {
       "name": "brain",
       "source": "./",
-      "description": "Long-term memory for Claude Code: archive, search and resume every session."
+      "description": "Your entire Claude history — every device, every word, one place."
     }
   ]
 }

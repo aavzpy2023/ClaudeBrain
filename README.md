@@ -2,9 +2,10 @@
 
 # 🧠 ClaudeBrain
 
-**Long-term memory for Claude Code.**
-Every conversation you have in the terminal or VS Code — archived, searchable and resumable,
-in one small SQLite file.
+### Your entire Claude history — every device, every word, one place.
+
+Claude Code in the terminal, VS Code and Desktop, plus your claude.ai chats — from your laptop,
+your work PC and your phone — archived word for word, searchable forever, and one question away.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)
@@ -13,28 +14,71 @@ in one small SQLite file.
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
+```text
+/plugin install brain --marketplace aavzpy2023/ClaudeBrain
+```
+
 </div>
 
 ---
 
 ## The problem
 
-Claude Code keeps each session as a JSONL transcript under `~/.claude/projects/` — and then:
+Your history with Claude is the record of months of decisions, experiments and dead ends — and
+today it is:
 
-- 🗑️ **deletes them after 30 days** (`cleanupPeriodDays` default),
-- 🗜️ **compacts** long conversations, so the live context loses the early details,
-- 🧩 **scatters** them per folder, per surface (CLI, VS Code, Desktop), with no way to search across them.
-
-Months of decisions, experiments and dead ends simply vanish.
+- 🧩 **Scattered.** Every computer keeps its own sessions, every app its own (terminal, VS Code,
+  Desktop, claude.ai), every project folder its own files. Nothing searches across them.
+- 🗑️ **Deleted.** Claude Code removes transcripts after 30 days by default, and long sessions get
+  compacted, so even the live context loses the early details.
+- 🗜️ **Summarized away.** Memory tools keep an AI summary of each session and drop the rest. The
+  exact error message, the reason you rejected an approach, the number from that run — gone the
+  moment a model decided it wasn't important.
 
 ## The idea
 
-> Work with Claude exactly as always. In the background, every message is saved.
-> Whenever you need it — *"what did we decide about X?"*, *"resume the session about Y"*,
-> *"write me a report of project Z"* — Claude looks it up.
+```mermaid
+flowchart LR
+    subgraph Devices["Everywhere you use Claude"]
+        H["💻 Laptop<br/>CLI · VS Code · Desktop"]
+        W["🏢 Work PC<br/>CLI · VS Code"]
+        A["🌐 claude.ai<br/>web · Desktop · mobile chats"]
+    end
+    H & W -->|"every reply, automatically"| B[("🧠 Your brain<br/>full history, word for word")]
+    A -->|"data export, any time"| B
+    B --> Q1(["💬 Ask Claude Code"])
+    B --> Q2(["📱 Ask from claude.ai / your phone"])
+```
 
-No extra app, no UI to learn: **you ask Claude in plain language, Claude queries the database
-and shows you the result.**
+> Work with Claude exactly as always. In the background, every message from every device is
+> saved — verbatim, organized by project. Whenever you need it — *"what did we decide about
+> X?"*, *"pick up the session about Y"*, *"write me a report on project Z"* — ask Claude, from
+> any device.
+
+No extra app, no UI to learn, no AI summarizing at save time: **you ask in plain language,
+Claude searches your complete history and answers, writes the report, or gives you the command
+to resume.**
+
+## How is it different?
+
+Most memory tools for Claude Code compress each session with an AI model when it's saved and
+inject the summary into later sessions. ClaudeBrain keeps the whole conversation and lets Claude
+distill it only when you ask — then caches that digest.
+
+| | AI-memory tools (e.g. claude-mem, memsearch) | **ClaudeBrain** |
+|---|---|---|
+| What's kept | AI summaries / observations | **The conversation, word for word** |
+| AI call when saving | Yes (your plan or an API key) | **No — free and deterministic** |
+| Across computers | Varies; vendor cloud | **Your own Postgres; git-aware projects add up across machines** |
+| From claude.ai / phone | Not offered | **Yes, read-only connector** |
+| claude.ai chats | No | **Imported from the official export** |
+| Survives the 30-day cleanup | Not addressed | **Yes** |
+| Injects context automatically | Yes | No — ask, and Claude looks it up |
+| Semantic (meaning) search | Yes (embeddings) | Word variants + Claude's query expansion (embeddings on the roadmap) |
+| Other agents (Codex, Gemini…) | Several | Claude only |
+
+They solve different problems and can be combined: an AI memory for day-to-day context,
+ClaudeBrain as the complete, permanent record.
 
 ---
 
@@ -542,6 +586,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.8.1
+- New positioning: *your entire Claude history — every device, every word, one place*. README
+  opens with the problem (scattered, deleted, summarized away), a cross-device diagram and an
+  honest comparison with AI-memory tools; plugin and marketplace descriptions match.
 
 ### 0.8.0
 - Better search, the same locally and in Neon: each word matches its variants (light

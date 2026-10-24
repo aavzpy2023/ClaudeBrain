@@ -1,5 +1,5 @@
 ---
-description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X" — or when another task needs a project's past decisions as context.
+description: Search and recall the user's past Claude Code sessions (CLI, VS Code, Desktop) and imported claude.ai chats, archived in a local SQLite database. Use when the user, in any language, refers to earlier work or asks to recall, resume, summarize or report on something from previous sessions or a project's history — e.g. "what did we do in…?", "how did I fix…?", "what did we decide about…?", "search my history", "in an earlier session…", "pick up where we left off on…", "write a report/document/summary of project X", "which sessions do I have in X?" (often written "sections"/"secciones") — or when another task needs a project's past decisions as context.
 allowed-tools: Bash(claude-brain *)
 ---
 
@@ -13,6 +13,11 @@ prompt for permission:
 ```
 claude-brain <command> [options]
 ```
+
+**"Sections" usually means sessions.** In history questions users often write "sections"
+(Spanish "secciones") for sessions — "which sections do we have in project X?" means "list
+the sessions of X" (`B project X`). Answer that; don't describe document sections or search
+for the word "section".
 
 In the table, `B` stands for that command. `claude-brain status` shows what is archived.
 If `claude-brain` is not found (the plugin was installed during this session, before its folder joined the PATH), run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-brain"` instead — same arguments.

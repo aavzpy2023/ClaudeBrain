@@ -594,6 +594,10 @@ repo (same remote) or the same aliased folder end up under one project name.
 
 ## 📜 Changelog
 
+### 0.9.1
+- The recall skill and the claude.ai instructions read "sections" / "secciones" in history
+  questions as *sessions* (a frequent slip): "which sections do we have in X?" lists X's sessions.
+
 ### 0.9.0
 - New async `SessionStart` hook (plugin and manual install): the archive catches up when a
   session opens, so a fresh install — or a week away — is ready before your first question.

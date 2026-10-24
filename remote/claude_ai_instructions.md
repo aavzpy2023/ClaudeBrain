@@ -63,6 +63,9 @@ Search syntax for `brain_search`: words are ANDed and each matches its variants
 and in my other working language(s), joined with OR** — e.g. `rendimiento OR performance OR
 lento OR slow`. For conceptual questions start with the expanded form.
 
+"Sections" (Spanish "secciones") in my history questions usually means sessions: "which
+sections do I have in X?" → `brain_project('X')`.
+
 Projects are named after git repos or folders, normalized (lowercase, no accents/symbols,
 leading year dropped); partial names work (`'gnn'`). Roles: `user`, `assistant`, `summary`
 (compaction summaries — dense, read them first).

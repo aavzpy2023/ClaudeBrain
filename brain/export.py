@@ -91,11 +91,11 @@ def export_project(conn, api, name: str, out: Path, since=None, tools=False, red
     return {"project": project, "folder": folder, "sessions": len(sessions), "written": written}
 
 
-def run(conn, api, args) -> None:
+def run(conn, api, args, say=print) -> None:
     out = Path(args.out).expanduser()
     names = [p["project"] for p in api.projects(conn)] if args.all else [args.project]
     if not names or names == [None]:
         raise LookupError("name a project, or pass --all")
     for name in names:
         r = export_project(conn, api, name, out, args.since, args.tools, not args.no_redact)
-        print(f"{r['project']:<24} {r['sessions']:>4} sessions → {r['folder']}  ({r['written']} file(s) written)")
+        say(f"{r['project']:<24} {r['sessions']:>4} sessions → {r['folder']}  ({r['written']} file(s) written)")

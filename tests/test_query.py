@@ -135,3 +135,14 @@ def test_host_shown_only_for_remote_rows():
     assert "@" not in query._session_line(row)
     assert query._session_line({**row, "host": "work-pc"}).endswith("@work-pc")
     assert query._session_line({**row, "host": None}).endswith("@?")
+
+
+def test_render_every_read_command(loaded):
+    """Regression: render() once shadowed its text buffer with a command's result."""
+    from types import SimpleNamespace as NS
+    for args in (NS(cmd="projects"), NS(cmd="recent", project=None, limit=5),
+                 NS(cmd="project", name="gnn", since=None),
+                 NS(cmd="session", session_id=SID[:8], after=None, tools=False, sidechain=False, max_chars=500),
+                 NS(cmd="search", query="regresion", project=None, source=None, since=None, limit=5,
+                    tools=False, sidechain=False, raw=False)):
+        assert query.render(loaded, args).strip(), args.cmd

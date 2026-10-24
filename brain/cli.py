@@ -28,6 +28,11 @@ Archive:
   import <export> [--inspect]     import a claude.ai data export (zip, folder or json)
   status                          what is archived, pending sync, retention, cloud setup
 
+MCP server (optional, off by default; for Claude Desktop and other agents, needs uv):
+  mcp enable [--no-redact]        add it to Claude Desktop (restart Desktop afterwards)
+  mcp disable | status            remove it / show where it is on
+  mcp snippet [--no-redact]       config to paste into any other MCP client
+
 Cloud (optional, needs NEON_URL in ~/.config/claude-brain/.env and uv):
   cloud init                      create/upgrade the Neon schema and read-only role
   cloud reader-password           give the read-only role the password the connector needs
@@ -82,6 +87,11 @@ def status() -> None:
     hint = "" if days and days >= 365 else "  ← Claude Code deletes transcripts after this; /brain:setup raises it"
     print(f"retention  cleanupPeriodDays = {days or '30 (default)'}{hint}")
 
+    from brain import mcp_setup
+
+    mcp_on = mcp_setup.SERVER_NAME in mcp_setup._load(mcp_setup.desktop_config_path()).get("mcpServers", {})
+    print(f"mcp        {'on in Claude Desktop' if mcp_on else 'off (optional: claude-brain mcp enable)'}")
+
     if not sync.neon_url():
         print("cloud      off (optional: /brain:cloud or `claude-brain cloud init`)")
         return
@@ -107,6 +117,10 @@ def main(argv=None) -> None:
         importer.main(rest)
     elif command == "status":
         status()
+    elif command == "mcp":
+        from brain import mcp_setup
+
+        mcp_setup.main(rest)
     elif command == "cloud":
         cloud(rest)
     elif command == "sync":

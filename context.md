@@ -72,6 +72,14 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   Diagnostics against Neon must use `SET LOCAL ROLE` inside a transaction — the pooled endpoint
   leaks session `SET ROLE` to other clients (sync itself uses the direct endpoint).
   Files: `brain/query.py::fts_query`, `brain/query.py::stem`, `remote/schema.sql`, `brain/sync.py::direct_url`
+- **MCP server is opt-in per client.** `mcp_server.py` (MCPServer from the `mcp` 2.x SDK, run
+  via uv) exposes the read commands as read-only tools whose output is `query.render()` text,
+  redacted unless `--no-redact`; Neon when configured, local fallback. Clients point at
+  `~/.local/share/claude-brain/mcp-launch.py` (copy of `brain/mcp_launch.py`, stdlib only), which
+  reads the current ClaudeBrain path from `root` — written by `hook.py` via
+  `mcp_setup.record_root()` on every hook run, so plugin updates don't break client configs.
+  `mcp_setup` edits only the `claude-brain` entry of Claude Desktop's config (backup kept).
+  Files: `brain/mcp_server.py`, `brain/mcp_launch.py`, `brain/mcp_setup.py::enable`, `brain/mcp_setup.py::record_root`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

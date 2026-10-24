@@ -3,6 +3,8 @@
 Usage: python3 brain/query.py <command> [options]   (see --help)
 """
 import argparse
+import functools
+import io
 import re
 import sqlite3
 import subprocess
@@ -375,66 +377,73 @@ def main(argv=None) -> None:
 
 
 def _run(conn, args, api=None) -> None:
-    """Print a command's result. `api` supplies the read functions (this module, or brain.remote
-    for Neon); both return the same shapes, so the output is identical."""
+    sys.stdout.write(render(conn, args, api))
+
+
+def render(conn, args, api=None) -> str:
+    """A command's output as text. `api` supplies the read functions (this module, or brain.remote
+    for Neon); both return the same shapes, so the text is identical. Shared by CLI and MCP."""
     api = api or sys.modules[__name__]
+    buffer = io.StringIO()
+    say = functools.partial(print, file=buffer)
     if args.cmd == "search":
         roles = DEFAULT_ROLES + (("tool",) if args.tools else ())
         rows = api.search(conn, args.query, args.project, args.source, args.since,
                           args.limit, args.sidechain, args.raw, roles)
         for r in rows:
-            print(f"{_day(r['ts'])}  {r['project']}  {r['entrypoint']}  "
+            say(f"{_day(r['ts'])}  {r['project']}  {r['entrypoint']}  "
                   f"{r['session_id'][:8]}  {r['title'] or '(untitled)'}{_host(r)}")
-            print(f"  {r['role']}: {' '.join(r['snippet'].split())}")
+            say(f"  {r['role']}: {' '.join(r['snippet'].split())}")
         if not rows:
-            print("no matches")
+            say("no matches")
     elif args.cmd == "recent":
         for s in api.recent(conn, args.project, args.limit):
-            print(f"{s['project']:<20} {_session_line(s)}")
+            say(f"{s['project']:<20} {_session_line(s)}")
     elif args.cmd == "session":
         roles = DEFAULT_ROLES + (("tool",) if args.tools else ())
         out = api.session(conn, args.session_id, args.after, roles, args.sidechain, args.max_chars)
         s = out["session"]
         repo = f" · {s['repo']}" if s.get("repo") else ""
-        print(f"# {s['title'] or '(untitled)'}\n{s['project']} · {s['project_cwd']}{repo} · {_session_line(s)}\n")
+        say(f"# {s['title'] or '(untitled)'}\n{s['project']} · {s['project_cwd']}{repo} · {_session_line(s)}\n")
         for m in out["messages"]:
-            print(f"--- {m['role']} {_day(m['ts'])}\n{m['text']}\n")
+            say(f"--- {m['role']} {_day(m['ts'])}\n{m['text']}\n")
         if out["truncated"]:
             last = out["messages"][-1]["ts"] if out["messages"] else args.after
-            print(f"[truncated at --max-chars; continue with --after {last}]")
+            say(f"[truncated at --max-chars; continue with --after {last}]")
     elif args.cmd == "projects":
         for p in api.projects(conn):
             hosts = f"  @{p['hosts']}" if p.get("hosts") else ""
-            print(f"{p['project']:<24} {p['sessions']:>4} sessions {p['messages'] or 0:>6} msgs  "
+            say(f"{p['project']:<24} {p['sessions']:>4} sessions {p['messages'] or 0:>6} msgs  "
                   f"last {_day(p['last_ts'])}  {p['folders']}{hosts}")
     elif args.cmd == "project":
         out = api.project(conn, args.name, args.since)
-        print(f"# project {out['project']}")
+        say(f"# project {out['project']}")
         d = out["digest"]
         if d:
-            print(f"\n## latest digest (covers until {d['covers_until_ts']}, saved {d['created_at']})\n")
-            print(d["content"])
+            say(f"\n## latest digest (covers until {d['covers_until_ts']}, saved {d['created_at']})\n")
+            say(d["content"])
         else:
-            print("\n(no digest yet)")
-        print("\n## sessions (* = not covered by the digest)")
+            say("\n(no digest yet)")
+        say("\n## sessions (* = not covered by the digest)")
         for s in out["sessions"]:
-            print(f"{'*' if s['after_digest'] else ' '} {_session_line(s)}")
+            say(f"{'*' if s['after_digest'] else ' '} {_session_line(s)}")
     elif args.cmd == "export":
         from brain import export  # imports brain.sync for redaction; keep query's import light
 
-        export.run(conn, api, args)
+        export.run(conn, api, args, say)
     elif args.cmd == "save-digest":
         d = save_digest(conn, args.scope, args.key, sys.stdin.read(), args.covers_until)
-        print(f"saved digest #{d['id']} for {d['scope']} {d['key']} (covers until {d['covers_until_ts']})")
+        say(f"saved digest #{d['id']} for {d['scope']} {d['key']} (covers until {d['covers_until_ts']})")
     elif args.cmd == "alias":
         if args.folder and args.name:
             n = alias(conn, args.folder, args.name)
-            print(f"alias set; {n} session(s) relabelled")
+            say(f"alias set; {n} session(s) relabelled")
         else:
             for folder, name in sorted(load_aliases(conn).items(), key=lambda a: a[1]):
                 kind = "repo" if "/" in folder else "folder"
-                print(f"{name:<26} ← {kind} {folder}")
+                say(f"{name:<26} ← {kind} {folder}")
 
+    return buffer.getvalue()
 
 if __name__ == "__main__":
     main()

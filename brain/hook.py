@@ -14,6 +14,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from brain import mcp_setup
 from brain.db import connect, db_path
 from brain.ingest import DEFAULT_ROOT, ingest
 from brain.sync import find_uv, neon_url, uv_command
@@ -34,6 +35,10 @@ def main(argv=None) -> None:
             conn = connect()
             ingest(conn, DEFAULT_ROOT)
             conn.close()
+        except Exception:
+            traceback.print_exc(file=err)
+        try:
+            mcp_setup.record_root()  # keeps the MCP launcher pointing at this (possibly new) version
         except Exception:
             traceback.print_exc(file=err)
         if not (args.sync and neon_url()):

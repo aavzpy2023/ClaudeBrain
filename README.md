@@ -98,6 +98,7 @@ ClaudeBrain as the complete, permanent record.
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
+| 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as five read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
 ---
@@ -415,6 +416,29 @@ callouts. With the cloud on it exports every device's sessions.
   in the folder is touched. It's a snapshot — edits you make to exported notes are overwritten
   on the next export of that session.
 
+### Use it from Claude Desktop and other agents (MCP)
+
+An optional, **off-by-default** local MCP server exposes the archive as five read-only tools —
+`search`, `recent`, `projects`, `project`, `session` — with the recall rules built into their
+descriptions. With the cloud on it answers from every device, else from this machine.
+
+```bash
+claude-brain mcp enable      # adds it to Claude Desktop (restart Desktop); --no-redact to keep secrets
+claude-brain mcp status      # where it's on
+claude-brain mcp disable     # removes only its own entry
+claude-brain mcp snippet     # config for any other MCP client: Cursor, Codex, Gemini CLI, …
+```
+
+- **Why opt-in:** every conversation in that client carries the tool definitions (~1k tokens),
+  and results go to that client's model provider — **secrets are redacted by default**.
+- Clients start a stable launcher in `~/.local/share/claude-brain/`, which finds the current
+  ClaudeBrain version itself, so plugin updates never break their config.
+- Claude Code doesn't need it — the recall skill does the same, loaded only when needed.
+- Web apps (claude.ai, Gemini web) can't run local servers: claude.ai uses the cloud mirror, and
+  for anything else there's the Markdown export.
+- Needs uv (it supplies the MCP SDK). Claude Desktop is configured automatically and tested;
+  other clients through `snippet`, not yet tested.
+
 ### Importing your claude.ai chats
 
 Chats in claude.ai (web, Desktop app, mobile) have no hooks, so they come in through the official
@@ -486,7 +510,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 73 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 81 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -506,6 +530,9 @@ brain/
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
+  mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
+  mcp_launch.py   stable launcher clients point at; finds the current version
+  mcp_setup.py    claude-brain mcp enable | disable | status | snippet
   gitrepo.py   repo root + normalized remote of a folder, straight from .git files
   importer.py  claude.ai data export → sessions with origin claude-ai
   query.py     search / sessions / projects / digests — library + CLI
@@ -597,6 +624,8 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [ ] Assign imported claude.ai chats to projects (the export has no chat→project link)
 - [x] Word variants (light stemming + prefix), `OR` / phrases / exclusions, identical locally and in Neon
 - [ ] CJK-aware search (FTS5 `trigram` tokenizer / Postgres `pg_trgm`) for Chinese, Japanese, Korean
+- [x] Optional local MCP server (read-only, redacted, per-client opt-in) — Claude Desktop automatic
+- [ ] `mcp enable` for Cursor, Codex and Gemini CLI (today: `mcp snippet`)
 - [ ] Optional semantic search — design notes:
   - Local only for free-text queries: `fastembed` (ONNX, CPU) with a **multilingual** model
     (the default `bge-small-en` is English-only), run via `uv --with fastembed` so the core
@@ -618,6 +647,13 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.12.0
+- **Optional MCP server** for Claude Desktop and other agents: read-only `search`, `recent`,
+  `projects`, `project`, `session`, every device when the cloud is on, secrets redacted by
+  default. `claude-brain mcp enable | disable | status | snippet`; off by default. A stable
+  launcher (refreshed by the hooks) keeps client configs valid across plugin updates.
+- `query.render()` returns a command's text, shared by the CLI and the MCP server.
 
 ### 0.11.0
 - `claude-brain export <project> | --all --out DIR`: Markdown notes per session (Obsidian

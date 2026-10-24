@@ -521,7 +521,17 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [ ] Assign imported claude.ai chats to projects (the export has no chat→project link)
 - [x] Word variants (light stemming + prefix), `OR` / phrases / exclusions, identical locally and in Neon
 - [ ] CJK-aware search (FTS5 `trigram` tokenizer / Postgres `pg_trgm`) for Chinese, Japanese, Korean
-- [ ] Optional semantic search (embeddings) for Claude Code
+- [ ] Optional semantic search — design notes:
+  - Local only for free-text queries: `fastembed` (ONNX, CPU) with a **multilingual** model
+    (the default `bge-small-en` is English-only), run via `uv --with fastembed` so the core
+    stays dependency-free; embed in batches (not in the per-reply hook), chunk long messages,
+    skip tool output, merge with keyword hits (e.g. reciprocal rank fusion).
+  - Neon: pgvector stores the vectors but can't embed a new query (Neon's in-database
+    `pgrag` is deprecated and English-only), so claude.ai gets **"more like this"** instead:
+    `brain_similar(message_id)` ranks by the stored vector of a message found by keyword
+    search — cross-language with a multilingual model.
+  - ~35 MB of vectors for ~23k messages at 384 dimensions. Build it only if keyword search
+    plus Claude's query expansion proves insufficient in practice.
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Claude Code plugin + marketplace (local by default, cloud opt-in)

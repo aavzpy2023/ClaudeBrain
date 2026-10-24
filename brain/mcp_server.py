@@ -105,6 +105,14 @@ def project(name: str, since: str | None = None) -> str:
 
 
 @server.tool(annotations=READ_ONLY, description=(
+    "The user's Claude history in numbers: messages, words, sessions, busiest day, longest "
+    "streak, hours of the day, top projects, sources and tools. `since` is an ISO date "
+    "(2026-01-01 for a year in review); `project` narrows it to one project."))
+def stats(project: str | None = None, since: str | None = None) -> str:
+    return answer(["stats", *_opt("--project", project), *_opt("--since", since)])
+
+
+@server.tool(annotations=READ_ONLY, description=(
     "Why a file is the way it is: the sessions that changed it (edits and shell commands), the "
     "user's request before each change, and sessions that only mentioned it. `path` is the "
     "file's path inside its repo (e.g. src/model.py); `project` is required here."))

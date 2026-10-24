@@ -30,7 +30,7 @@ def main(argv=None) -> None:
 
     log = db_path().parent / "ingest.log"
     log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("a") as err:
+    with log.open("a", encoding="utf-8", errors="replace") as err:
         try:
             conn = connect()
             ingest(conn, DEFAULT_ROOT)

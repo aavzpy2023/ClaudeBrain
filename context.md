@@ -106,6 +106,13 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   "Why" = last user message before each change. Commits (`git log --follow`, local repo) go to
   the changing session active at commit time (+30 min). Project defaults to `project_of_cwd`.
   Files: `brain/blame.py::blame`, `brain/blame.py::is_same_file`, `brain/query.py::file_mentions`, `brain/remote.py::file_mentions`, `brain/db.py::project_of_cwd`
+- **`stats` aggregates in the database, shapes in Python.** Primitive `stats_data` (in
+  `query.py` and `remote.py`, same SQL apart from `instr`/`strpos` and placeholders) returns
+  counts per UTC hour × role × project × source (+ word estimate), tool calls by name (first
+  tool per message), and sessions in range; `stats.compute` turns hours into local days,
+  streaks and the hour profile. Subagent messages excluded.
+  Output encoding: entry points call `brain.utf8_output()` (Windows pipes default to cp1252).
+  Files: `brain/stats.py::compute`, `brain/query.py::stats_data`, `brain/remote.py::stats_data`, `brain/__init__.py::utf8_output`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

@@ -7,8 +7,10 @@ If `claude-brain` is not found (the plugin was installed during this session, be
 
 Check the user's ClaudeBrain install and offer the recommended settings.
 
-1. Run `claude-brain status` and summarize it in a few lines: what is archived, from which
-   sources, and whether the cloud mirror is on. Archiving needs no setup — it runs when a
+1. Run `claude-brain status` and `claude-brain stats`. Open with two or three highlights from
+   stats — how much history they have, since when, their busiest project or day — it's the
+   first time they see their whole Claude history in one place. Then summarize status in a few
+   lines: what is archived, from which sources, and whether the cloud mirror is on. Archiving needs no setup — it runs when a
    session starts and after every reply, and backfills the history Claude Code still has on disk.
 2. Retention. If `cleanupPeriodDays` is unset or below 365, explain that Claude Code deletes
    transcripts after that many days (30 by default). The brain keeps its own copy of every

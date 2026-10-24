@@ -14,7 +14,7 @@ if __package__ in (None, ""):
 import psycopg
 from psycopg.rows import dict_row
 
-from brain import query
+from brain import query, utf8_output
 from brain.query import DEFAULT_ROLES, mark_after_digest, match_project, take_within
 from brain.sync import direct_url, neon_url
 
@@ -106,6 +106,29 @@ def user_prompts(conn, ids: list[str]) -> list[dict]:
         (ids,)).fetchall()
 
 
+def stats_data(conn, project=None, since=None) -> dict:
+    where, params = ["m.is_sidechain = 0", "m.ts IS NOT NULL"], []
+    if project:
+        where.append("s.project = %s")
+        params.append(project)
+    if since:
+        where.append("m.ts >= %s")
+        params.append(since)
+    scope = "FROM messages m JOIN sessions s USING (session_id) WHERE " + " AND ".join(where)
+    hours = conn.execute(
+        f"""SELECT substr(m.ts, 1, 13) AS hour, m.role, s.project, m.entrypoint, COUNT(*) AS n,
+                   SUM(length(m.text) - length(replace(m.text, ' ', '')) + 1) AS words
+            {scope} GROUP BY 1, 2, 3, 4""", params).fetchall()
+    tools = conn.execute(
+        f"""SELECT substr(m.text, 7, strpos(m.text, ']') - 7) AS name, COUNT(*) AS n
+            {scope} AND m.text LIKE '[tool:%%' GROUP BY 1""", params).fetchall()
+    sessions = conn.execute(
+        f"""SELECT {_SESSION_COLS} FROM sessions
+            WHERE (%s::text IS NULL OR project = %s) AND (%s::text IS NULL OR last_ts >= %s)""",
+        (project, project, since, since)).fetchall()
+    return {"hours": hours, "tools": tools, "sessions": sessions}
+
+
 def projects(conn) -> list[dict]:
     return conn.execute(
         """SELECT project, COUNT(*) AS sessions, SUM(msg_count) AS messages, MAX(last_ts) AS last_ts,
@@ -135,6 +158,7 @@ def project(conn, name: str, since=None) -> dict:
 
 
 def main(argv=None) -> None:
+    utf8_output()  # run by uv as its own process, printing straight to the caller's console
     args = query.build_parser().parse_args(sys.argv[1:] if argv is None else argv)
     url = neon_url()
     try:

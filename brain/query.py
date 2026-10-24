@@ -224,6 +224,31 @@ def user_prompts(conn: sqlite3.Connection, ids: list[str]) -> list[dict]:
             ORDER BY ts""", ids)]
 
 
+def stats_data(conn: sqlite3.Connection, project: str | None = None, since: str | None = None) -> dict:
+    """Aggregates for `stats`: messages per UTC hour × role × project × source (with a word
+    count), tool calls by name, and the sessions active in the range. Subagents excluded."""
+    where, params = ["m.is_sidechain = 0", "m.ts IS NOT NULL"], []
+    if project:
+        where.append("s.project = ?")
+        params.append(project)
+    if since:
+        where.append("m.ts >= ?")
+        params.append(since)
+    scope = "FROM messages m JOIN sessions s USING (session_id) WHERE " + " AND ".join(where)
+    hours = conn.execute(
+        f"""SELECT substr(m.ts, 1, 13) AS hour, m.role, s.project, m.entrypoint, COUNT(*) AS n,
+                   SUM(length(m.text) - length(replace(m.text, ' ', '')) + 1) AS words
+            {scope} GROUP BY 1, 2, 3, 4""", params)
+    tools = conn.execute(
+        f"""SELECT substr(m.text, 7, instr(m.text, ']') - 7) AS name, COUNT(*) AS n
+            {scope} AND m.text LIKE '[tool:%' GROUP BY 1""", params)
+    sessions = conn.execute(
+        "SELECT * FROM sessions WHERE (? IS NULL OR project = ?) AND (? IS NULL OR last_ts >= ?)",
+        (project, project, since, since))
+    return {"hours": [dict(r) for r in hours], "tools": [dict(r) for r in tools],
+            "sessions": [dict(r) for r in sessions]}
+
+
 def projects(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """SELECT project, COUNT(*) AS sessions, SUM(msg_count) AS messages,
@@ -305,7 +330,7 @@ def _session_line(s: dict) -> str:
     )
 
 
-READ_COMMANDS = {"search", "recent", "session", "projects", "project", "export", "blame"}
+READ_COMMANDS = {"search", "recent", "session", "projects", "project", "export", "blame", "stats"}
 REMOTE_OFFLINE = 75  # exit code of brain/remote.py when Neon can't be reached
 
 
@@ -344,6 +369,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file", help="path of the file (relative to here, or absolute)")
     p.add_argument("--project", help="default: the project of the current folder")
     p.add_argument("--limit", type=int, default=10, help="sessions to show, newest first")
+
+    p = sub.add_parser("stats", help="your history in numbers: volume, rhythm, projects, tools")
+    p.add_argument("--project")
+    p.add_argument("--since", help="ISO date, e.g. 2026-01-01 for a year in review")
 
     p = sub.add_parser("export", help="write projects as Markdown notes (Obsidian-friendly)")
     p.add_argument("project", nargs="?", help="project name (partial ok); or --all")
@@ -457,6 +486,10 @@ def render(conn, args, api=None) -> str:
         from brain import blame
 
         blame.run(conn, api, args, say)
+    elif args.cmd == "stats":
+        from brain import stats
+
+        stats.run(conn, api, args, say)
     elif args.cmd == "export":
         from brain import export  # imports brain.sync for redaction; keep query's import light
 

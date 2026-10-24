@@ -21,6 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from brain import utf8_output
 from brain.db import connect, relabel_sessions
 
 ENV_FILE = Path.home() / ".config" / "claude-brain" / ".env"
@@ -361,6 +362,7 @@ def sync_aliases(local: sqlite3.Connection, remote) -> int:
 
 
 def main(argv=None) -> None:
+    utf8_output()  # run by uv as its own process, printing straight to the caller's console
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--setup", action="store_true",
                         help="first-time or new-machine setup: schema, connector password only if "

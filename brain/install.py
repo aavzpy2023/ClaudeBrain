@@ -150,6 +150,9 @@ def main(argv=None) -> None:
 
     if not args.no_backfill:
         subprocess.run([sys.executable, str(REPO / "brain" / "ingest.py"), "--full"], check=True)
+        print()
+        subprocess.run([sys.executable, str(REPO / "bin" / "claude-brain"), "stats", "--local"])
+        print()
     if has_neon and uv:
         subprocess.run(uv_command(uv, "--setup"), check=True)
     else:

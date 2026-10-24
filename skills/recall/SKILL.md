@@ -36,6 +36,7 @@ and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
 | Need | Command |
 |---|---|
 | Which projects exist | `B projects` |
+| History in numbers (volume, busiest days, streaks, hours, top projects/tools) | `B stats [--project P] [--since DATE]` — `--since 2026-01-01` for a year in review |
 | Latest sessions | `B recent [--project P] [--limit N]` |
 | Find where something was discussed | `B search "terms" [--project P] [--since 2026-09-01] [--limit N] [--tools]` |
 | Read one session (condensed) | `B session <id-prefix> [--after TS] [--max-chars N] [--tools]` |

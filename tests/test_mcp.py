@@ -81,3 +81,4 @@ def test_server_answers_locally_with_redaction(root, tmp_path, monkeypatch):
     assert "Entrena el modelo" in mcp_server.session(SID[:8])
     assert mcp_server.session("nope").startswith("error:")
     assert "1 shell command(s)" in mcp_server.blame("train.py", "gnn")  # `python train.py`
+    assert "1 session across 1 project" in mcp_server.stats()

@@ -98,6 +98,7 @@ record.
 | 🖥️ **Every Claude Code surface** | CLI, VS Code extension and Claude Desktop's Code tab all land in the same database, tagged by origin. |
 | 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
+| 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -107,7 +108,7 @@ record.
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
 | 🧭 **Session briefing, opt-in** | `claude-brain context on` starts each new session with a 3-line list of your latest sessions in that project (~120 tokens, local, no network). Off by default. |
-| 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as six read-only tools; off by default, one command to turn off. |
+| 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as seven read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
 ---
@@ -391,6 +392,7 @@ Q=claude-brain
 
 $Q status                                     # what's archived, pending sync, retention, cloud
 $Q projects                                   # all projects, sessions, last activity
+$Q stats --since 2026-01-01                   # your year in review: volume, rhythm, projects, tools
 $Q recent --project thesis --limit 5          # latest sessions (partial names work)
 $Q search "graphsage naive bayes" --since 2026-10-01
 $Q search 'rendimiento OR performance OR slow -benchmark'   # alternatives, exclusion
@@ -419,6 +421,29 @@ $ claude-brain project phdthesis
 * 44705308  2026-10-17 13:56 → 2026-10-17 17:43  cli            78 msgs  Remote folders over SSH in VS Code
 …
 ```
+
+### Your history in numbers (`stats`)
+
+```text
+$ claude-brain stats
+🧠 Your Claude history · since 2026-06-26 (121 days)
+
+  30,530 messages in 181 sessions across 20 projects on 2 computers
+  You wrote 2,782 messages · 186k words
+  Claude wrote 5,275 replies · 638k words — about 7 novels
+  11,207 tool calls: Bash 8,819 · Read 840 · Edit 825 · Write 340 · Monitor 86
+
+  Busiest day      2026-09-23 (Wed) · 2,695 messages
+  Active days      58 of 121 · longest streak 25 days (2026-09-30 → 2026-10-24)
+  Longest session  c7688feb · 2,700 msgs · Continue the scraper rewrite
+  When you work    00 ▁▁▁ ▁▁▃▆▄▅▄▅▃▅▇▆█▆▆▇▇█▆▂ 23   (peak 21:00–22:00)
+
+  Top projects     web-shop 23% · thesis 12% · data-pipeline 12% · +17 more
+  Sources          cli 64% · claude-vscode 32% · claude-ai 3% · claude-desktop <1%
+```
+
+`--project P` for one project, `--since DATE` for a period. `/brain:setup` shows it right after
+installing — the first time you see your whole history in one place.
 
 ### Why is this file like this? (`blame`)
 
@@ -500,8 +525,8 @@ claude-brain context off
 
 ### Use it from Claude Desktop and other agents (MCP)
 
-An optional, **off-by-default** local MCP server exposes the archive as six read-only tools —
-`search`, `recent`, `projects`, `project`, `session`, `blame` — with the recall rules built into their
+An optional, **off-by-default** local MCP server exposes the archive as seven read-only tools —
+`search`, `recent`, `projects`, `project`, `session`, `blame`, `stats` — with the recall rules built into their
 descriptions. With the cloud on it answers from every device, else from this machine.
 
 ```bash
@@ -593,7 +618,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 102 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 105 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -614,6 +639,7 @@ brain/
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   context.py   optional session-start briefing (claude-brain context on | off | preview)
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
+  stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
   mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
@@ -736,6 +762,14 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.16.0
+- **`claude-brain stats`**: your history in numbers — messages and words, busiest day, longest
+  streak, hours of the day, top projects, sources and tools; per project or period (`--since`),
+  and across computers with the cloud on. Shown by `/brain:setup` and the manual installer.
+  Also an MCP tool.
+- Windows: output is always UTF-8, so `→`, `·` and the charts can't crash a command in a
+  Windows pipe; the hook log is written as UTF-8 too.
 
 ### 0.15.0
 - **`claude-brain blame <file>`**: the sessions that changed a file (Edit/Write calls and shell

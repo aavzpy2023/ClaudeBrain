@@ -282,7 +282,7 @@ def _session_line(s: dict) -> str:
     )
 
 
-READ_COMMANDS = {"search", "recent", "session", "projects", "project"}
+READ_COMMANDS = {"search", "recent", "session", "projects", "project", "export"}
 REMOTE_OFFLINE = 75  # exit code of brain/remote.py when Neon can't be reached
 
 
@@ -316,6 +316,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("project", help="timeline + latest digest of a project")
     p.add_argument("name")
     p.add_argument("--since")
+
+    p = sub.add_parser("export", help="write projects as Markdown notes (Obsidian-friendly)")
+    p.add_argument("project", nargs="?", help="project name (partial ok); or --all")
+    p.add_argument("--all", action="store_true", help="every project")
+    p.add_argument("--out", default="brain-export", help="target folder, e.g. your Obsidian vault")
+    p.add_argument("--since", help="only sessions active since this date")
+    p.add_argument("--tools", action="store_true", help="include tool calls/results")
+    p.add_argument("--no-redact", action="store_true", help="keep secrets (default: redacted)")
 
     p = sub.add_parser("save-digest", help="store a summary read from stdin")
     p.add_argument("scope", choices=["project", "session"])
@@ -411,6 +419,10 @@ def _run(conn, args, api=None) -> None:
         print("\n## sessions (* = not covered by the digest)")
         for s in out["sessions"]:
             print(f"{'*' if s['after_digest'] else ' '} {_session_line(s)}")
+    elif args.cmd == "export":
+        from brain import export  # imports brain.sync for redaction; keep query's import light
+
+        export.run(conn, api, args)
     elif args.cmd == "save-digest":
         d = save_digest(conn, args.scope, args.key, sys.stdin.read(), args.covers_until)
         print(f"saved digest #{d['id']} for {d['scope']} {d['key']} (covers until {d['covers_until_ts']})")

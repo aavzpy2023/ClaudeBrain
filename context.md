@@ -72,6 +72,10 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   Diagnostics against Neon must use `SET LOCAL ROLE` inside a transaction — the pooled endpoint
   leaks session `SET ROLE` to other clients (sync itself uses the direct endpoint).
   Files: `brain/query.py::fts_query`, `brain/query.py::stem`, `remote/schema.sql`, `brain/sync.py::direct_url`
+- **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
+  exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
+  changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.
+  Files: `brain/export.py::export_project`, `brain/export.py::render_session`
 - **claude.ai importer.** Official export → sessions with entrypoint `claude-ai`, session id =
   conversation uuid, message uuid kept (`<conv>:<i>` if missing), `INSERT OR IGNORE` so re-imports
   only add. Pseudo cwd `claude.ai/<Project name>` (or `claude.ai`) + `repo_root=''` lets

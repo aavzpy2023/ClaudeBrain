@@ -20,6 +20,8 @@ Recall (local):
   projects | project <name> [--since DATE]
   save-digest project|session <key> [--covers-until TS]   (content on stdin)
   alias [<folder name | git remote | path> <project>]
+  export <project> | --all [--out DIR] [--since DATE] [--tools] [--no-redact]
+                                  Markdown notes per session + project index (Obsidian-friendly)
 
 Archive:
   ingest [--full]                 archive new Claude Code transcripts (the hooks do this)
@@ -34,7 +36,7 @@ Cloud (optional, needs NEON_URL in ~/.config/claude-brain/.env and uv):
 
 Run `claude-brain <command> --help` for a command's options."""
 
-QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias"}
+QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias", "export"}
 CLOUD_FLAGS = {"sync": [], "init": ["--init"], "reader-password": ["--reader-password"]}
 
 

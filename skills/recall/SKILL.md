@@ -43,6 +43,7 @@ and `MLvsGNN` are both `mlvsgnn`. Partial names work (`gnn`).
 | Cache a distilled summary | `B save-digest project P <<'EOF'` … `EOF` (or `session <id>`) |
 | Group/rename projects | `B alias <folder name, git remote or path> <name>` — applies at any depth, on every machine (synced); no args lists aliases |
 | Import claude.ai chats | `B import <export folder or zip> [--inspect]` (the user downloads the export first) |
+| Export to Markdown/Obsidian | `B export <project> \| --all --out <folder>` — the user picks the folder (e.g. their vault); secrets redacted unless `--no-redact` |
 
 Sources (`--source`): `cli`, `claude-vscode`, `claude-desktop` (Claude Code) and `claude-ai`
 (chats imported from the claude.ai export: web, Desktop app, mobile).

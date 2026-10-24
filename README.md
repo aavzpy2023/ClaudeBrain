@@ -97,6 +97,7 @@ ClaudeBrain as the complete, permanent record.
 | 📝 **Lazy digests** | When Claude summarizes a project for you, it caches the summary; the next report only reads what happened since. Zero cost up front. |
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
+| 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
 ---
@@ -395,6 +396,25 @@ $ claude-brain project phdthesis
 …
 ```
 
+### Exporting to Markdown / Obsidian
+
+```bash
+claude-brain export thesis --out ~/Obsidian/Vault/Claude    # one project (partial name ok)
+claude-brain export --all --out ~/Obsidian/Vault/Claude     # every project
+```
+
+Each project becomes a folder: a `<project>.md` index (latest digest + a table linking every
+session) and one note per session, named `2026-10-13_error-de-conexion-con-gemini_8d05e82c.md`,
+with properties Obsidian shows as metadata (`started`, `source`, `host`, `repo`, `messages`…),
+messages under `🧑 User` / `🤖 Claude` headings and compaction summaries as `[!summary]`
+callouts. With the cloud on it exports every device's sessions.
+
+- **Secrets are redacted by default** (vaults often sync to Dropbox/iCloud); `--no-redact` keeps
+  the raw text. `--tools` adds tool calls; `--since` limits by date.
+- Re-run it whenever you like: only notes whose content changed are rewritten, and nothing else
+  in the folder is touched. It's a snapshot — edits you make to exported notes are overwritten
+  on the next export of that session.
+
 ### Importing your claude.ai chats
 
 Chats in claude.ai (web, Desktop app, mobile) have no hooks, so they come in through the official
@@ -466,7 +486,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 70 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 73 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -485,6 +505,7 @@ brain/
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
   remote.py    the read commands against Neon (all devices), run through uv
+  export.py    Markdown/Obsidian export over any read API
   gitrepo.py   repo root + normalized remote of a folder, straight from .git files
   importer.py  claude.ai data export → sessions with origin claude-ai
   query.py     search / sessions / projects / digests — library + CLI
@@ -597,6 +618,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.11.0
+- `claude-brain export <project> | --all --out DIR`: Markdown notes per session (Obsidian
+  properties, role headings, summary callouts) plus a project index; secrets redacted by default;
+  only changed notes rewritten; every device's sessions when the cloud is on.
 
 ### 0.10.0
 - **Every device from every device.** With the cloud on, `search`, `recent`, `session`,

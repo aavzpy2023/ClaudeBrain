@@ -29,8 +29,16 @@ SESSIONS = [
     ]),
     ("web-shop", "Slow product search", "2026-09-15T16:20:00Z", [
         ("user", "Product search is very slow since the catalog import."),
+        ("tool", {"name": "Edit", "input": {"file_path": "/code/web-shop/src/search.py",
+                                            "old_string": "LIKE", "new_string": "% (trigram)"}}),
         ("assistant", "The query scans the whole table. Added a trigram index on products.name: "
                       "p95 latency dropped from 1.8 s to 40 ms."),
+    ]),
+    ("web-shop", "Search ranking tweaks", "2026-09-28T11:30:00Z", [
+        ("user", "Exact name matches should rank above fuzzy ones in search."),
+        ("tool", {"name": "Edit", "input": {"file_path": "/code/web-shop/src/search.py",
+                                            "old_string": "ORDER BY", "new_string": "ORDER BY exact DESC,"}}),
+        ("assistant", "Exact matches now sort first, then by trigram similarity."),
     ]),
     ("web-shop", "Payments retry policy", "2026-10-03T09:10:00Z", [
         ("user", "Payment webhooks sometimes arrive twice."),
@@ -52,6 +60,7 @@ SESSIONS = [
 STEPS = [
     "claude-brain projects",
     'claude-brain search "slow OR latency OR performance"',
+    "claude-brain blame src/search.py --project webshop",
     "claude-brain session 00000001",
 ]
 
@@ -62,11 +71,13 @@ def build_archive(home: Path) -> None:
         sid = f"{i:08x}-demo-0000-0000-000000000000"
         cwd = f"/code/{project}"
         lines = [{"type": "ai-title", "aiTitle": title, "sessionId": sid}]
-        for j, (role, text) in enumerate(messages):
+        for j, (role, body) in enumerate(messages):
             minute = f"{ts[:17]}{j:02d}{ts[19:]}"  # one second apart
-            lines.append({"type": role, "uuid": f"{sid}-{j}", "sessionId": sid, "timestamp": minute,
+            block = ({"type": "tool_use", **body} if role == "tool" else {"type": "text", "text": body})
+            kind = "assistant" if role == "tool" else role
+            lines.append({"type": kind, "uuid": f"{sid}-{j}", "sessionId": sid, "timestamp": minute,
                           "cwd": cwd, "entrypoint": "cli", "isSidechain": False,
-                          "message": {"role": role, "content": [{"type": "text", "text": text}]}})
+                          "message": {"role": kind, "content": [block]}})
         folder = root / cwd.replace("/", "-")
         folder.mkdir(parents=True, exist_ok=True)
         (folder / f"{sid}.jsonl").write_text("\n".join(json.dumps(l) for l in lines) + "\n")

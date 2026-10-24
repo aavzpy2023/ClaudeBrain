@@ -672,7 +672,7 @@ remote/
   claude_ai_instructions.md   template for the claude.ai connector + project
 tests/         synthetic transcripts, temp databases
 context.md     index for Claude: where each rule lives
-assets/        demo.gif and make_demo.py (regenerates it from a synthetic archive)
+assets/        demo.gif / make_demo.py (from a synthetic archive), social-preview.png / make_social.py
 ```
 
 The query layer is plain functions over a `sqlite3.Connection`, so an MCP server could reuse it
@@ -792,14 +792,20 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [ ] Topics inside a project (`phdthesis → paperdownloader / writing / tooling`), assigned while summarizing
 - [x] Installer (paths, skill, settings merge, backfill, first sync)
 - [x] Claude Code plugin + marketplace (local by default, cloud opt-in)
-- [x] Demo GIF (CLI)
-- [ ] Plugin icon and a GIF of asking Claude in a real session
+- [x] Demo GIF (CLI, including `blame`) and a social preview image
+- [ ] A GIF of asking Claude in a real session
+- [x] `blame` (why a file changed), `stats`, `forget`, `browse` (Datasette)
+- [ ] Session briefing: also the digest's open items, when one exists
 - [x] Several computers feeding one cloud mirror
 - [x] Share aliases across machines through Neon
 - [x] Windows support (exec-form hooks, both path styles) — awaiting a real-machine test
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.18.1
+- Demo GIF now shows `blame`; social preview image for link sharing (`assets/social-preview.png`).
+- The recall skill knows `browse` is for the user's own terminal.
 
 ### 0.18.0
 - **`claude-brain browse`**: the archive in your browser through Datasette (via uv) — facets,

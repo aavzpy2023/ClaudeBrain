@@ -15,7 +15,8 @@ your work PC and your phone — archived word for word, searchable forever, and 
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
 ```text
-/plugin install brain --marketplace aavzpy2023/ClaudeBrain
+/plugin marketplace add aavzpy2023/ClaudeBrain
+/plugin install brain@aavzpy2023
 ```
 
 </div>
@@ -198,11 +199,14 @@ erDiagram
 ### As a Claude Code plugin (recommended)
 
 ```text
-/plugin install brain --marketplace aavzpy2023/ClaudeBrain
+/plugin marketplace add aavzpy2023/ClaudeBrain
+/plugin install brain@aavzpy2023
 ```
 
-<sub>On Claude Code older than 2.1.275: `/plugin marketplace add aavzpy2023/ClaudeBrain`, then
-`/plugin install brain@aavzpy2023`.</sub>
+<sub>Same from a terminal: `claude plugin marketplace add aavzpy2023/ClaudeBrain && claude plugin
+install brain@aavzpy2023`. On Claude Code 2.1.275+ the one-step
+`/plugin install brain --marketplace aavzpy2023/ClaudeBrain` also works. Check with
+`claude plugin list` — `brain` must be listed; adding the marketplace alone installs nothing.</sub>
 
 Then **restart Claude Code** (hooks and the `claude-brain` command load when a session starts).
 That's it — **everything runs locally**:
@@ -587,6 +591,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.8.4
+- README installs in two steps (`marketplace add`, then `install brain@aavzpy2023`), which works
+  on every Claude Code version, and says to verify with `claude plugin list`: on a first real
+  install the one-step command only added the marketplace.
 
 ### 0.8.3
 - `/brain:setup` ends with a restart notice when the plugin was installed in the current session

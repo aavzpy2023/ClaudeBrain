@@ -1,7 +1,7 @@
 {
   "name": "brain",
   "displayName": "ClaudeBrain",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Your entire Claude history — every device, every word, one place. Archives every Claude Code session verbatim into a local database, searchable by project and resumable; optional cloud mirror readable from claude.ai and your phone.",
   "author": {
     "name": "aavzpy2023",

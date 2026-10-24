@@ -60,3 +60,28 @@ def test_connect_refuses_without_a_terminal_and_writes_nothing(monkeypatch, tmp_
         cli.main(["cloud", "connect"])
     assert "own terminal" in str(exc.value) and "cloud connect" in str(exc.value)
     assert not sync.ENV_FILE.exists()
+
+
+def test_datasette_metadata_matches_the_schema_and_the_db_name(monkeypatch, tmp_path):
+    from brain.db import connect
+
+    db = tmp_path / "my-archive.db"
+    monkeypatch.setenv("CLAUDE_BRAIN_DB", str(db))
+    tables = {r[0] for r in connect().execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    cmd, meta = cli.datasette_command("/usr/bin/uv", port=8123)
+    assert set(meta["databases"]) == {"my-archive"}  # Datasette names a database after its file
+    assert set(meta["databases"]["my-archive"]["tables"]) <= tables
+    assert cmd[:6] == ["/usr/bin/uv", "tool", "run", "--from", cli.DATASETTE, "datasette"]
+    assert str(db) in cmd and cmd[-2:] == ["--port", "8123"]
+    assert (tmp_path / "datasette.json").is_file()
+
+
+def test_browse_needs_a_terminal(monkeypatch):
+    import io
+
+    import pytest
+
+    monkeypatch.setattr("brain.sync.find_uv", lambda: "/usr/bin/uv")
+    monkeypatch.setattr("sys.stdout", io.StringIO())
+    with pytest.raises(SystemExit, match="own"):
+        cli.main(["browse"])

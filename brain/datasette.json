@@ -1,0 +1,48 @@
+{
+  "title": "ClaudeBrain",
+  "description": "Your Claude history, read-only. Full-text search: try a canned query below, or the search box on messages.",
+  "databases": {
+    "brain": {
+      "tables": {
+        "sessions": {
+          "label_column": "title",
+          "facets": ["project", "entrypoint"],
+          "sort_desc": "last_ts"
+        },
+        "messages": {
+          "fts_table": "messages_fts",
+          "fts_pk": "rowid",
+          "facets": ["role", "entrypoint"],
+          "sort_desc": "ts"
+        },
+        "digests": {"sort_desc": "created_at"},
+        "folder_aliases": {"hidden": true},
+        "files": {"hidden": true},
+        "sync_state": {"hidden": true},
+        "project_aliases": {"hidden": true},
+        "pending_remote": {"hidden": true},
+        "forgotten": {"hidden": true}
+      },
+      "queries": {
+        "search": {
+          "title": "Search the conversation",
+          "description": "Words are ANDed; word* for prefixes, \"exact phrase\", OR between words. Tool calls left out.",
+          "sql": "SELECT m.ts, s.project, s.title, m.role, snippet(messages_fts, 0, '[', ']', '…', 24) AS snippet, m.session_id FROM messages_fts JOIN messages m ON m.rowid = messages_fts.rowid JOIN sessions s USING (session_id) WHERE messages_fts MATCH :q AND m.role != 'tool' AND m.is_sidechain = 0 ORDER BY rank LIMIT 100"
+        },
+        "session": {
+          "title": "Read a session",
+          "description": "Paste a session id or its first 8 characters.",
+          "sql": "SELECT ts, role, text FROM messages WHERE session_id LIKE :id || '%' AND role != 'tool' AND is_sidechain = 0 ORDER BY ts"
+        },
+        "projects": {
+          "title": "Projects",
+          "sql": "SELECT project, COUNT(*) AS sessions, SUM(msg_count) AS messages, MIN(first_ts) AS first, MAX(last_ts) AS last FROM sessions WHERE msg_count > 0 GROUP BY project ORDER BY last DESC"
+        },
+        "project_timeline": {
+          "title": "A project's sessions",
+          "sql": "SELECT session_id, first_ts, last_ts, entrypoint, msg_count, title FROM sessions WHERE project = :project AND msg_count > 0 ORDER BY first_ts"
+        }
+      }
+    }
+  }
+}

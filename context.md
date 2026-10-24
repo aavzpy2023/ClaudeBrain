@@ -121,6 +121,11 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   Neon's `forgotten` and drops those sessions locally. Neon schema v2 adds `forgotten`.
   Claude Code transcripts are only deleted with `--transcripts`.
   Files: `brain/forget.py::forget_sessions`, `brain/forget.py::redact_text`, `brain/sync.py::sync_forgotten`, `brain/ingest.py::ingest_file`, `remote/schema.sql`
+- **`browse` = Datasette via uv, configured, never bundled.** `cli.datasette_command` runs
+  `uv tool run --from 'datasette>=0.65,<1'` (1.0 changes the metadata format) with
+  `brain/datasette.json`, rewritten next to the DB keyed by the DB file's stem (Datasette's
+  database name). Refuses without a TTY: it blocks until Ctrl+C, so Claude must not run it.
+  Files: `brain/cli.py::datasette_command`, `brain/datasette.json`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

@@ -101,6 +101,7 @@ record.
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
 | 🧹 **Forget, for real** | `claude-brain forget session <id>`, `project <name>` or `text "<leaked string>"` removes them here and in the cloud, on every computer — a dry run until `--yes`; forgotten sessions never come back. |
+| 🌐 **Browse it in your browser** | `claude-brain browse` opens the archive in [Datasette](https://datasette.io): facets by project and source, full-text search, canned queries (search, read a session, projects). Local, read-only, nothing to install beyond uv. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -447,6 +448,18 @@ $ claude-brain stats
 (Sample numbers.) `--project P` for one project, `--since DATE` for a period. `/brain:setup` shows it right after
 installing — the first time you see your whole history in one place.
 
+### Browse it in your browser (`browse`)
+
+```bash
+claude-brain browse          # in your own terminal; Ctrl+C to stop
+```
+
+Opens your archive in [Datasette](https://datasette.io) at `http://127.0.0.1:8001`: sessions
+faceted by project and source, messages with a full-text search box, and canned queries —
+*Search the conversation*, *Read a session*, *Projects*, *A project's sessions* — plus any SQL
+you like (`SELECT` only: Datasette opens it read-only). It runs on this machine only and comes
+through uv, so there's nothing to install.
+
 ### Why is this file like this? (`blame`)
 
 `git blame` says who changed a line and when. `claude-brain blame` says **why**: the sessions
@@ -620,7 +633,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 111 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 113 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -643,6 +656,7 @@ brain/
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
   forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
+  datasette.json  `claude-brain browse`: hidden tables, facets, full-text search, canned queries
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
   mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
@@ -786,6 +800,10 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.18.0
+- **`claude-brain browse`**: the archive in your browser through Datasette (via uv) — facets,
+  full-text search, canned queries; local and read-only.
 
 ### 0.17.0
 - **`claude-brain forget`** `session <id>… | project <name> | text "<string>"`: deletes sessions

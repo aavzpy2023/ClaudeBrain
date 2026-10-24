@@ -36,6 +36,7 @@ Archive:
   ingest [--full]                 archive new Claude Code transcripts (the hooks do this)
   import <export> [--inspect]     import a claude.ai data export (zip, folder or json)
   status                          what is archived, pending sync, retention, cloud setup
+  browse [--port N]               explore it in your browser (Datasette via uv; your own terminal)
 
 Session briefing (optional, off by default):
   context on [N] | off            start new sessions with your latest N (default 3) sessions there
@@ -93,6 +94,38 @@ def cloud_connect() -> None:
     project_id = input("Project id (Neon → Settings → General; Enter to skip): ").strip()
     path = sync.write_env({"NEON_URL": url, **({"NEON_PROJECT_ID": project_id} if project_id else {})})
     print(f"saved to {path}, readable only by you. Next: claude-brain cloud setup")
+
+
+DATASETTE = "datasette>=0.65,<1"  # 1.0 moves metadata.json to a new config format
+
+
+def datasette_command(uv: str, port: int | None = None) -> tuple[list[str], dict]:
+    """The `uv tool run datasette` command line for the archive, and the metadata it uses — keyed
+    by the database file's name, which is what Datasette calls the database."""
+    db = db_path()
+    meta = json.loads((Path(__file__).resolve().parent / "datasette.json").read_text())
+    meta["databases"] = {db.stem: meta["databases"]["brain"]}
+    meta_file = db.parent / "datasette.json"
+    meta_file.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+    cmd = [uv, "tool", "run", "--from", DATASETTE, "datasette", "serve", str(db),
+           "--metadata", str(meta_file), "--setting", "sql_time_limit_ms", "5000", "--open"]
+    return cmd + (["--port", str(port)] if port else []), meta
+
+
+def browse(args: list[str]) -> None:
+    uv = sync.find_uv()
+    if not uv:
+        sys.exit("browse runs Datasette through uv: https://docs.astral.sh/uv/")
+    if not sys.stdout.isatty():
+        sys.exit(f"browse starts a local web server and runs until Ctrl+C — run it in your own "
+                 f"terminal:\n  {SELF} browse")
+    port = int(args[args.index("--port") + 1]) if "--port" in args else None
+    cmd, _ = datasette_command(uv, port)
+    print("ClaudeBrain in your browser (Datasette, this machine only, read-only). Ctrl+C to stop.")
+    try:
+        subprocess.call(cmd)
+    except KeyboardInterrupt:
+        pass
 
 
 def cloud(args: list[str]) -> None:
@@ -178,6 +211,8 @@ def main(argv=None) -> None:
         importer.main(rest)
     elif command == "status":
         status()
+    elif command == "browse":
+        browse(rest)
     elif command == "forget":
         from brain import forget
 

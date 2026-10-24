@@ -44,16 +44,14 @@ today it is:
 
 ```mermaid
 flowchart LR
-    subgraph Devices["Everywhere you use Claude"]
-        H["💻 Laptop<br/>CLI · VS Code · Desktop"]
-        W["🏢 Work PC<br/>CLI · VS Code"]
-        A["🌐 claude.ai<br/>web · Desktop · mobile chats"]
-    end
-    H & W -->|"every reply, automatically"| B[("🧠 Your brain<br/>full history, word for word")]
-    A -->|"data export, any time"| B
-    B --> Q1(["💬 Ask Claude Code"])
-    B --> Q2(["📱 Ask from claude.ai / your phone"])
+    H["💻 Laptop<br/>CLI · VS Code · Desktop"] <-->|"saves every reply · asks"| B[("🧠 Your brain<br/>one history, word for word")]
+    W["🏢 Work PC<br/>CLI · VS Code"] <-->|"saves every reply · asks"| B
+    A["🌐 claude.ai<br/>web · Desktop · mobile"] <-.->|"export in · asks"| B
 ```
+
+<sub>One brain, shared by every device: each one saves into it and asks it. Asking across
+devices — and from claude.ai — uses the optional cloud mirror; without it, each computer asks
+its own archive.</sub>
 
 > Work with Claude exactly as always. In the background, every message from every device is
 > saved — verbatim, organized by project. Whenever you need it — *"what did we decide about

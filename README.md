@@ -211,9 +211,9 @@ install brain@aavzpy2023`. On Claude Code 2.1.275+ the one-step
 Then **restart Claude Code** (hooks and the `claude-brain` command load when a session starts).
 That's it — **everything runs locally**:
 
-- Archiving starts with Claude's next reply, in every project. The first run backfills the
-  history Claude Code still has on disk (all projects at once), so nothing waits for you to open
-  a project.
+- Archiving runs when a session starts and after every reply, in every project. The first run
+  backfills the history Claude Code still has on disk (all projects at once), so your archive is
+  ready before your first question and nothing waits for you to open a project.
 - Ask about past work and the `/brain:recall` skill answers; the `claude-brain` command is on
   Claude's PATH while the plugin is enabled.
 - The database lives in `~/.local/share/claude-brain/brain.db`, outside the plugin, so updates
@@ -241,7 +241,7 @@ python3 ~/Projects/ClaudeBrain/brain/install.py          # Windows: py -3 brain\
 | Step | What it does |
 |---|---|
 | Skill | Renders the skill with this machine's paths into `~/.claude/skills/claude-brain/` |
-| Hooks | Async `Stop` hook (ingest, then sync if Neon is configured) and `SessionEnd` hook (ingest), exec form, no shell |
+| Hooks | Async `SessionStart` and `Stop` hooks (ingest, then sync if Neon is configured) and a `SessionEnd` hook (ingest), exec form, no shell |
 | Permission | Allows the skill's exact command, so queries never prompt |
 | Retention | Raises `cleanupPeriodDays` to 3650 |
 | Backfill | Archives everything Claude Code still has on disk |
@@ -291,6 +291,8 @@ read-only transactions (`readonly=true`) and with only Neon's SQL tools exposed
 **Only your computers write; claude.ai only reads.**
 
 ```
+opening or resuming a session (SessionStart hook → hook.py, background)
+   └─ same as below: catches up before your first question
 every Claude reply (Stop hook → hook.py, background)
    ├─ ingest.py → local brain.db          always, offline too
    └─ sync.py   ⇄ Neon                    new rows up, aliases both ways; only when online
@@ -316,7 +318,7 @@ mirror, so claude.ai sees the union of all of them.
 
 - No collisions: messages and sessions use Claude Code's global UUIDs; digests are keyed by
   `<hostname>:<local id>`.
-- On a new machine, the first reply after installing backfills that machine's existing
+- On a new machine, the first session after installing backfills that machine's existing
   transcripts (whatever Claude Code hasn't deleted yet) and uploads them.
 - **The same project adds up across machines.** A session's project is decided, most specific
   first, by: an alias on its git remote → an alias on any folder of its cwd (deepest first) →
@@ -471,7 +473,7 @@ claude --plugin-dir .              # try the plugin from a checkout, without ins
 .claude-plugin/
   plugin.json        plugin manifest (name "brain", shown as ClaudeBrain)
   marketplace.json   this repo is its own marketplace
-hooks/hooks.json     Stop (async: ingest + sync) and SessionEnd (ingest) → brain/hook.py
+hooks/hooks.json     SessionStart + Stop (async: ingest + sync), SessionEnd (ingest) → brain/hook.py
 skills/recall/       the recall skill (/brain:recall); install.py renders it for manual installs
 commands/            /brain:setup and /brain:cloud
 bin/claude-brain     CLI on Claude's PATH while the plugin is enabled
@@ -510,8 +512,8 @@ global too.
 
 Example — a computer with 5 projects:
 
-- The first Claude reply after installing (in any project) archives — and, with the cloud on,
-  uploads — the existing sessions of **all 5**. With the manual installer it happens during the
+- The first session you open after installing (in any project) archives — and, with the cloud
+  on, uploads — the existing sessions of **all 5**, in the background. With the manual installer it happens during the
   install itself.
 - Afterwards you work in project A while a session of project B is still running in another
   window: B's new messages go up with the next Claude reply, whether that reply is in A or in B.
@@ -523,7 +525,7 @@ Example — a computer with 5 projects:
 <summary><b>What happens when I install it on another computer?</b></summary>
 
 Install the plugin there and put the same `NEON_URL` (and `NEON_PROJECT_ID`) in its `.env`.
-With the first Claude reply, the hook:
+When you open your first session there, the hook:
 
 1. archives every Claude Code session that computer still has, all projects, into its own
    local `brain.db`, and detects each session's git repo (the project folders must exist there;
@@ -591,6 +593,10 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.9.0
+- New async `SessionStart` hook (plugin and manual install): the archive catches up when a
+  session opens, so a fresh install — or a week away — is ready before your first question.
 
 ### 0.8.4
 - README installs in two steps (`marketplace add`, then `install brain@aavzpy2023`), which works

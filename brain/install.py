@@ -38,9 +38,12 @@ def commands(python: str, repo: Path, uv: str | None) -> dict:
     hook = _posix(repo / "brain" / "hook.py")
     # --sync is a no-op until NEON_URL is configured, so cloud can be switched on later.
     stop_args = [hook, "--sync"] + (["--uv", _posix(uv)] if uv else [])
+    background = {"type": "command", "command": _posix(python), "args": stop_args,
+                  "timeout": 120, "async": True}
     return {
-        "stop": {"type": "command", "command": _posix(python), "args": stop_args,
-                 "timeout": 120, "async": True},
+        # SessionStart catches up before the first question (e.g. after days away or a reinstall).
+        "session_start": dict(background),
+        "stop": background,
         "session_end": {"type": "command", "command": _posix(python), "args": [hook], "timeout": 120},
         "query": f"{shlex.quote(_posix(python))} {shlex.quote(_posix(repo / 'bin' / 'claude-brain'))}",
     }
@@ -54,7 +57,8 @@ def _is_ours(hook: dict) -> bool:
 def merge_settings(settings: dict, cmds: dict) -> dict:
     """Return settings with ClaudeBrain's hooks, permission and retention set; others untouched."""
     hooks = settings.setdefault("hooks", {})
-    for event, hook in (("Stop", cmds["stop"]), ("SessionEnd", cmds["session_end"])):
+    for event, hook in (("SessionStart", cmds["session_start"]), ("Stop", cmds["stop"]),
+                        ("SessionEnd", cmds["session_end"])):
         groups = [g for g in hooks.get(event, []) if not any(_is_ours(h) for h in g.get("hooks", []))]
         groups.append({"hooks": [hook]})
         hooks[event] = groups

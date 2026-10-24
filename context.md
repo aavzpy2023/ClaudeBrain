@@ -35,7 +35,8 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
 - **Two install paths, never both.** (1) Plugin (default): repo root = plugin root = its own
   marketplace (`.claude-plugin/plugin.json` name `brain` — `claude-*` plugin names are reserved;
   `marketplace.json` name `aavzpy2023`, source `./`). `hooks/hooks.json` runs
-  `python3 ${CLAUDE_PLUGIN_ROOT}/brain/hook.py [--sync]` (exec form); `bin/claude-brain` is on
+  `python3 ${CLAUDE_PLUGIN_ROOT}/brain/hook.py [--sync]` (exec form) on SessionStart + Stop (async,
+  --sync) and SessionEnd; `bin/claude-brain` is on
   Claude's PATH; `skills/recall/SKILL.md` calls bare `claude-brain` and pre-approves it via
   `allowed-tools`; `commands/setup.md` and `commands/cloud.md` do what a plugin can't (edit
   settings, guide cloud setup). Local-only until NEON_URL exists. (2) `install.py` for Windows /

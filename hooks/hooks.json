@@ -1,12 +1,31 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/brain/hook.py",
+              "--sync"
+            ],
+            "timeout": 120,
+            "async": true
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/brain/hook.py", "--sync"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/brain/hook.py",
+              "--sync"
+            ],
             "timeout": 120,
             "async": true
           }
@@ -19,7 +38,9 @@
           {
             "type": "command",
             "command": "python3",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/brain/hook.py"],
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/brain/hook.py"
+            ],
             "timeout": 120
           }
         ]

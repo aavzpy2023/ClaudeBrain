@@ -26,6 +26,7 @@ def test_hooks_use_exec_form_without_shell():
     assert cmds["stop"]["command"] == "/usr/bin/python3"
     assert cmds["stop"]["args"] == ["/home/u/My Code/ClaudeBrain/brain/hook.py", "--sync", "--uv", "/usr/bin/uv"]
     assert cmds["stop"]["async"] is True
+    assert cmds["session_start"] == cmds["stop"]
     assert cmds["session_end"]["args"] == ["/home/u/My Code/ClaudeBrain/brain/hook.py"]
     assert _cmds(uv=None)["stop"]["args"] == ["/home/u/My Code/ClaudeBrain/brain/hook.py", "--sync"]
     assert cmds["query"] == "/usr/bin/python3 '/home/u/My Code/ClaudeBrain/bin/claude-brain'"
@@ -55,6 +56,7 @@ def test_merge_replaces_previous_install_and_keeps_everything_else():
     assert sum(install._is_ours(h) for h in stop_hooks) == 1
     assert out["hooks"]["Stop"][-1]["hooks"][0]["async"] is True
     assert len(out["hooks"]["SessionEnd"]) == 1
+    assert out["hooks"]["SessionStart"] == [{"hooks": [_cmds()["session_start"]]}]
 
 
 def test_merge_is_idempotent_and_keeps_longer_retention():
@@ -87,6 +89,6 @@ def test_uninstall_removes_only_ours():
     out = install.remove_ours(installed)
     assert out["permissions"]["allow"] == ["Bash(git *)"]
     assert out["hooks"]["Stop"] == [{"matcher": "", "hooks": [{"type": "command", "command": "notify-send done"}]}]
-    assert "SessionEnd" not in out["hooks"]
+    assert "SessionEnd" not in out["hooks"] and "SessionStart" not in out["hooks"]
     assert out["hooks"]["PostToolUse"] == OLD_MANUAL_INSTALL["hooks"]["PostToolUse"]
     assert out["cleanupPeriodDays"] == install.RETENTION_DAYS and out["model"] == "opus"

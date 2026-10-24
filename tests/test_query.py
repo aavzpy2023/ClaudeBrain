@@ -96,3 +96,42 @@ def test_variants_and_alternatives_find_more(loaded):
     # exclusions apply per message: the only 'logistica' message also says 'revisa'
     assert query.search(loaded, "logistica") and query.search(loaded, "logistica -revisa") == []
     assert query.search(loaded, "OR") == []
+
+
+def _fake_cloud(monkeypatch, rc, calls):
+    monkeypatch.setenv("NEON_URL", "postgresql://u:p@h/db")
+    monkeypatch.setattr("brain.sync.find_uv", lambda: "/fake/uv")
+    monkeypatch.setattr("brain.query.subprocess.call", lambda cmd: calls.append(cmd) or rc)
+
+
+def test_read_commands_go_to_neon_when_cloud_is_on(monkeypatch, capsys, conn):
+    calls = []
+    _fake_cloud(monkeypatch, 0, calls)
+    query.main(["projects"])
+    assert calls and calls[0][-2:] == [str(query.Path(query.__file__).with_name("remote.py")), "projects"]
+    assert capsys.readouterr().out == ""  # remote printed it; nothing local
+
+
+def test_offline_falls_back_to_local_with_a_note(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CLAUDE_BRAIN_DB", str(tmp_path / "b.db"))
+    calls = []
+    _fake_cloud(monkeypatch, query.REMOTE_OFFLINE, calls)
+    query.main(["recent"])
+    assert "Neon unreachable" in capsys.readouterr().out and calls
+
+
+def test_local_flag_and_writes_never_go_remote(monkeypatch, tmp_path):
+    monkeypatch.setenv("CLAUDE_BRAIN_DB", str(tmp_path / "b.db"))
+    calls = []
+    _fake_cloud(monkeypatch, 0, calls)
+    query.main(["projects", "--local"])
+    query.main(["alias"])
+    assert calls == []
+
+
+def test_host_shown_only_for_remote_rows():
+    row = {"session_id": "abcdef123", "first_ts": "2026-10-01T10:00", "last_ts": "2026-10-01T11:00",
+           "entrypoint": "cli", "msg_count": 3, "title": "t"}
+    assert "@" not in query._session_line(row)
+    assert query._session_line({**row, "host": "work-pc"}).endswith("@work-pc")
+    assert query._session_line({**row, "host": None}).endswith("@?")

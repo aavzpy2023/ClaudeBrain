@@ -88,10 +88,14 @@ def find_uv() -> str | None:
     return None
 
 
-def uv_command(uv: str, *args: str) -> list[str]:
-    """Run this script with psycopg supplied by uv, without creating a venv inside the repo
+def uv_script(uv: str, script: Path, *args: str) -> list[str]:
+    """Run a script with psycopg supplied by uv, without creating a venv inside the repo
     (a plugin's install folder is replaced on every update)."""
-    return [uv, "run", "--quiet", "--no-project", "--with", PSYCOPG, str(Path(__file__).resolve()), *args]
+    return [uv, "run", "--quiet", "--no-project", "--with", PSYCOPG, str(script), *args]
+
+
+def uv_command(uv: str, *args: str) -> list[str]:
+    return uv_script(uv, Path(__file__).resolve(), *args)
 
 
 def claude_ai_instructions(project_id: str) -> str:
@@ -146,21 +150,22 @@ def push_sessions(local: sqlite3.Connection, remote) -> None:
     """Sessions mutate (titles, stats, alias relabels); upsert all, only rewriting changed rows."""
     rows = local.execute(
         """SELECT session_id, project, project_cwd, entrypoint, git_branch, title,
-                  first_ts, last_ts, msg_count, repo FROM sessions"""
+                  first_ts, last_ts, msg_count, repo, ? FROM sessions""", (socket.gethostname(),)
     ).fetchall()
     with remote.cursor() as cur:
         cur.executemany(
             """INSERT INTO sessions AS s (session_id, project, project_cwd, entrypoint, git_branch,
-                                          title, first_ts, last_ts, msg_count, repo)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                          title, first_ts, last_ts, msg_count, repo, host)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (session_id) DO UPDATE SET
                  project = excluded.project, project_cwd = excluded.project_cwd,
                  entrypoint = excluded.entrypoint, git_branch = excluded.git_branch,
                  title = excluded.title, first_ts = excluded.first_ts,
-                 last_ts = excluded.last_ts, msg_count = excluded.msg_count, repo = excluded.repo
-               WHERE (s.project, s.title, s.last_ts, s.msg_count, s.repo)
+                 last_ts = excluded.last_ts, msg_count = excluded.msg_count, repo = excluded.repo,
+                 host = excluded.host
+               WHERE (s.project, s.title, s.last_ts, s.msg_count, s.repo, s.host)
                      IS DISTINCT FROM (excluded.project, excluded.title, excluded.last_ts,
-                                       excluded.msg_count, excluded.repo)""",
+                                       excluded.msg_count, excluded.repo, excluded.host)""",
             [tuple(r) for r in rows],
         )
     remote.commit()

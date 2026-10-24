@@ -5,6 +5,7 @@ Usage: python3 brain/query.py <command> [options]   (see --help)
 import argparse
 import re
 import sqlite3
+import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -161,25 +162,35 @@ def session(
     if not sidechain:
         sql += " AND is_sidechain = 0"
     sql += " ORDER BY ts, rowid"
+    messages, truncated = take_within(conn.execute(sql, params), max_chars)
+    return {"session": meta, "messages": messages, "truncated": truncated}
+
+
+def take_within(rows, max_chars: int) -> tuple[list[dict], bool]:
+    """Messages until max_chars; always at least one (clipped), or paging with --after would loop."""
     messages, used, truncated = [], 0, False
-    for r in conn.execute(sql, params):
+    for r in rows:
         m = dict(r)
         if used + len(m["text"]) > max_chars:
             truncated = True
             if messages:
                 break
-            m["text"] = m["text"][:max_chars] + "…"  # always advance, or --after would loop
+            m["text"] = m["text"][:max_chars] + "…"
         messages.append(m)
         used += len(m["text"])
         if truncated:
             break
-    return {"session": meta, "messages": messages, "truncated": truncated}
+    return messages, truncated
 
 
 def resolve_project(conn: sqlite3.Connection, name: str) -> str:
+    names = [r[0] for r in conn.execute("SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL")]
+    return match_project(name, names)
+
+
+def match_project(name: str, names: list[str]) -> str:
     """Exact project name, else a unique partial match ('gnn' -> 'mlvsgnn')."""
     key = normalize_name(name)
-    names = [r[0] for r in conn.execute("SELECT DISTINCT project FROM sessions WHERE project IS NOT NULL")]
     if key in names:
         return key
     matches = sorted(n for n in names if key and key in n)
@@ -218,10 +229,14 @@ def project(conn: sqlite3.Connection, name: str, since: str | None = None) -> di
         params.append(since)
     sql += " ORDER BY first_ts"
     sessions = [dict(r) for r in conn.execute(sql, params)]
+    return {"project": key, "digest": digest, "sessions": mark_after_digest(sessions, digest)}
+
+
+def mark_after_digest(sessions: list[dict], digest: dict | None) -> list[dict]:
     covered = digest["covers_until_ts"] if digest else None
     for s in sessions:
         s["after_digest"] = covered is None or (s["last_ts"] or "") > covered
-    return {"project": key, "digest": digest, "sessions": sessions}
+    return sessions
 
 
 def save_digest(
@@ -256,14 +271,22 @@ def _day(ts: str | None) -> str:
     return (ts or "")[:16].replace("T", " ")
 
 
+def _host(row: dict) -> str:
+    return f"  @{row.get('host') or '?'}" if "host" in row else ""
+
+
 def _session_line(s: dict) -> str:
     return (
         f"{s['session_id'][:8]}  {_day(s['first_ts'])} → {_day(s['last_ts'])}  "
-        f"{s['entrypoint'] or '?'}  {s['msg_count']} msgs  {s['title'] or '(untitled)'}"
+        f"{s['entrypoint'] or '?'}  {s['msg_count']} msgs  {s['title'] or '(untitled)'}{_host(s)}"
     )
 
 
-def main(argv=None) -> None:
+READ_COMMANDS = {"search", "recent", "session", "projects", "project"}
+REMOTE_OFFLINE = 75  # exit code of brain/remote.py when Neon can't be reached
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -304,7 +327,36 @@ def main(argv=None) -> None:
                    help="folder name, git remote (any URL form), or an existing path (its name + its repo)")
     p.add_argument("name", nargs="?")
 
-    args = parser.parse_args(argv)
+    for name in READ_COMMANDS:
+        sub.choices[name].add_argument(
+            "--local", action="store_true",
+            help="this machine's archive only (default with the cloud on: every device, via Neon)")
+    return parser
+
+
+def _try_remote(argv: list[str]) -> bool:
+    """With the cloud on, answer read commands from Neon (every device). True if it did; offline
+    falls back to the local archive with a note."""
+    from brain import sync  # local import: sync is optional plumbing, query must stay standalone
+
+    uv = sync.find_uv() if sync.neon_url() else None
+    if not uv:
+        return False
+    script = Path(__file__).resolve().with_name("remote.py")
+    rc = subprocess.call(sync.uv_script(uv, script, *argv))
+    if rc == REMOTE_OFFLINE:
+        print("[Neon unreachable — showing this machine's archive only]\n")
+        return False
+    if rc:
+        sys.exit(rc)
+    return True
+
+
+def main(argv=None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    args = build_parser().parse_args(argv)
+    if args.cmd in READ_COMMANDS and not args.local and _try_remote(argv):
+        return
     conn = connect()
     try:
         _run(conn, args)
@@ -314,23 +366,26 @@ def main(argv=None) -> None:
         conn.close()
 
 
-def _run(conn: sqlite3.Connection, args) -> None:
+def _run(conn, args, api=None) -> None:
+    """Print a command's result. `api` supplies the read functions (this module, or brain.remote
+    for Neon); both return the same shapes, so the output is identical."""
+    api = api or sys.modules[__name__]
     if args.cmd == "search":
         roles = DEFAULT_ROLES + (("tool",) if args.tools else ())
-        rows = search(conn, args.query, args.project, args.source, args.since,
-                      args.limit, args.sidechain, args.raw, roles)
+        rows = api.search(conn, args.query, args.project, args.source, args.since,
+                          args.limit, args.sidechain, args.raw, roles)
         for r in rows:
             print(f"{_day(r['ts'])}  {r['project']}  {r['entrypoint']}  "
-                  f"{r['session_id'][:8]}  {r['title'] or '(untitled)'}")
+                  f"{r['session_id'][:8]}  {r['title'] or '(untitled)'}{_host(r)}")
             print(f"  {r['role']}: {' '.join(r['snippet'].split())}")
         if not rows:
             print("no matches")
     elif args.cmd == "recent":
-        for s in recent(conn, args.project, args.limit):
+        for s in api.recent(conn, args.project, args.limit):
             print(f"{s['project']:<20} {_session_line(s)}")
     elif args.cmd == "session":
         roles = DEFAULT_ROLES + (("tool",) if args.tools else ())
-        out = session(conn, args.session_id, args.after, roles, args.sidechain, args.max_chars)
+        out = api.session(conn, args.session_id, args.after, roles, args.sidechain, args.max_chars)
         s = out["session"]
         repo = f" · {s['repo']}" if s.get("repo") else ""
         print(f"# {s['title'] or '(untitled)'}\n{s['project']} · {s['project_cwd']}{repo} · {_session_line(s)}\n")
@@ -340,11 +395,12 @@ def _run(conn: sqlite3.Connection, args) -> None:
             last = out["messages"][-1]["ts"] if out["messages"] else args.after
             print(f"[truncated at --max-chars; continue with --after {last}]")
     elif args.cmd == "projects":
-        for p in projects(conn):
+        for p in api.projects(conn):
+            hosts = f"  @{p['hosts']}" if p.get("hosts") else ""
             print(f"{p['project']:<24} {p['sessions']:>4} sessions {p['messages'] or 0:>6} msgs  "
-                  f"last {_day(p['last_ts'])}  {p['folders']}")
+                  f"last {_day(p['last_ts'])}  {p['folders']}{hosts}")
     elif args.cmd == "project":
-        out = project(conn, args.name, args.since)
+        out = api.project(conn, args.name, args.since)
         print(f"# project {out['project']}")
         d = out["digest"]
         if d:

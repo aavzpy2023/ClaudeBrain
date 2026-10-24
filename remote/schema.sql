@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_project ON sessions (project, last_ts);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repo text;  -- normalized git remote
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS host text;  -- machine the session lives on (resume there)
 
 CREATE TABLE IF NOT EXISTS messages (
     uuid         text PRIMARY KEY,
@@ -156,25 +157,28 @@ LANGUAGE sql STABLE AS $$
     GROUP BY project ORDER BY max(last_ts) DESC
 $$;
 
+DROP FUNCTION IF EXISTS brain_recent(text, integer);
 CREATE OR REPLACE FUNCTION brain_recent(p_project text DEFAULT NULL, p_limit integer DEFAULT 10)
 RETURNS TABLE (session_id text, project text, entrypoint text, title text,
-               first_ts text, last_ts text, msg_count integer)
+               first_ts text, last_ts text, msg_count integer, host text)
 LANGUAGE sql STABLE AS $$
-    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count
+    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count, host
     FROM sessions
     WHERE msg_count > 0 AND (p_project IS NULL OR project ILIKE '%' || p_project || '%')
     ORDER BY last_ts DESC LIMIT p_limit
 $$;
 
+DROP FUNCTION IF EXISTS brain_search(text, text, text, integer);
 CREATE OR REPLACE FUNCTION brain_search(q text, p_project text DEFAULT NULL,
                                         p_since text DEFAULT NULL, p_limit integer DEFAULT 20)
 RETURNS TABLE (ts text, project text, entrypoint text, session_id text, title text,
-               role text, snippet text)
+               role text, snippet text, host text)
 LANGUAGE sql STABLE AS $$
     WITH query AS (SELECT brain_tsquery(q) AS tq)
     SELECT m.ts, s.project, m.entrypoint, m.session_id, s.title, m.role,
            ts_headline('simple', brain_unaccent(m.text), query.tq,
-                       'StartSel=[, StopSel=], MaxWords=35, MinWords=12, MaxFragments=2')
+                       'StartSel=[, StopSel=], MaxWords=35, MinWords=12, MaxFragments=2'),
+           s.host
     FROM messages m JOIN sessions s USING (session_id), query
     WHERE m.tsv @@ query.tq
       AND m.role IN ('user', 'assistant', 'summary') AND m.is_sidechain = 0
@@ -183,11 +187,12 @@ LANGUAGE sql STABLE AS $$
     ORDER BY ts_rank(m.tsv, query.tq) DESC LIMIT p_limit
 $$;
 
+DROP FUNCTION IF EXISTS brain_project(text);
 CREATE OR REPLACE FUNCTION brain_project(p_name text)
 RETURNS TABLE (session_id text, project text, entrypoint text, title text,
-               first_ts text, last_ts text, msg_count integer)
+               first_ts text, last_ts text, msg_count integer, host text)
 LANGUAGE sql STABLE AS $$
-    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count
+    SELECT session_id, project, entrypoint, title, first_ts, last_ts, msg_count, host
     FROM sessions
     WHERE msg_count > 0 AND project ILIKE '%' || p_name || '%'
     ORDER BY first_ts

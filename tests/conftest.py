@@ -54,6 +54,14 @@ def write_jsonl(path: Path, records, partial: str | None = None):
             fh.write(partial)
 
 
+@pytest.fixture(autouse=True)
+def no_real_cloud(monkeypatch, tmp_path_factory):
+    """No test may reach the user's real Neon: hide NEON_URL and the real .env everywhere."""
+    monkeypatch.delenv("NEON_URL", raising=False)
+    monkeypatch.delenv("NEON_PROJECT_ID", raising=False)
+    monkeypatch.setattr("brain.sync.ENV_FILE", tmp_path_factory.mktemp("cfg") / "missing.env")
+
+
 @pytest.fixture
 def conn(tmp_path):
     c = connect(tmp_path / "brain.db")

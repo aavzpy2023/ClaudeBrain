@@ -56,6 +56,14 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   the repo/plugin folder. `remote/claude_ai_instructions.md` is a template (`{{NEON_PROJECT_ID}}`)
   rendered by `sync.py --claude-ai`; no personal ids in the repo.
   Files: `brain/sync.py::redact`, `brain/sync.py::uv_command`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
+- **Reads go to Neon when the cloud is on.** `query.main` sends `READ_COMMANDS` to
+  `brain/remote.py` (uv + psycopg, direct endpoint, read-only connection), which implements the
+  same read API with Postgres SQL and reuses `query._run` for identical output plus `@host`.
+  Exit code `REMOTE_OFFLINE` (75) → local fallback with a note; `--local` skips it; writes
+  (`save-digest`, `alias`) are always local and reach Neon by sync. `sessions.host` exists only
+  in Neon (filled by `push_sessions`). Tests are isolated from any real Neon by an autouse
+  fixture in `tests/conftest.py`.
+  Files: `brain/query.py::main`, `brain/query.py::_run`, `brain/remote.py`, `tests/conftest.py::no_real_cloud`
 - **Search syntax is implemented twice and must stay identical.** Local `fts_query` (FTS5) and
   Neon `brain_tsquery` (plpgsql): words ANDed, last word of each term stemmed (`STEM_SUFFIXES`,
   remainder ≥ `STEM_MIN`) and prefix-matched (≥ `PREFIX_MIN` letters), `OR`, "phrase", -exclude.

@@ -331,7 +331,9 @@ mirror, so claude.ai sees the union of all of them.
   relabels the work PC's sessions on its next sync — and vice versa.
 - A *session* belongs to one machine (Claude Code gives each conversation its own id); it's the
   *project* that collects sessions from every computer.
-- Locally, each machine only searches its own sessions; the union lives in Neon (claude.ai).
+- With the cloud on, Claude Code on **any** machine searches the union too: read commands go to
+  Neon and tag every session with its `@host` (so Claude knows where it can be resumed), falling
+  back to the local archive when offline. `--local` limits a command to this machine.
 - On a machine you don't fully trust (e.g. a work laptop), consider a dedicated Neon role with
   only `INSERT/UPDATE/SELECT` on the three tables instead of the owner string.
 
@@ -464,7 +466,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 65 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 70 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -482,6 +484,7 @@ brain/
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
+  remote.py    the read commands against Neon (all devices), run through uv
   gitrepo.py   repo root + normalized remote of a folder, straight from .git files
   importer.py  claude.ai data export → sessions with origin claude-ai
   query.py     search / sessions / projects / digests — library + CLI
@@ -543,8 +546,9 @@ mind:
 - Only what that computer still has can be recovered: until `cleanupPeriodDays` is raised
   (`/brain:setup`), Claude Code there was deleting sessions older than 30 days.
 - Forgot the `.env`? Everything works locally; add it later and the next reply uploads it all.
-- Each machine's local `brain.db` holds only its own sessions — the union lives in Neon, so
-  query claude.ai to see both. Local Claude Code searches see that machine only.
+- Each machine's local `brain.db` holds only its own sessions; the union lives in Neon. With the
+  cloud on, Claude Code reads that union from every machine (offline: local only), and so does
+  claude.ai.
 - The first sync takes seconds to a couple of minutes depending on volume; later ones only send
   what's new.
 
@@ -593,6 +597,15 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.10.0
+- **Every device from every device.** With the cloud on, `search`, `recent`, `session`,
+  `projects` and `project` answer from Neon, so Claude Code on any computer sees the sessions of
+  all of them; offline they fall back to the local archive with a note, and `--local` keeps a
+  command on this machine. Every session is tagged `@host`, and Claude won't offer a native
+  resume for a session that lives on another machine.
+- Neon `sessions.host`; `brain_search`, `brain_recent` and `brain_project` return it for claude.ai.
+- Tests can no longer reach a real Neon database (global isolation fixture).
 
 ### 0.9.1
 - The recall skill and the claude.ai instructions read "sections" / "secciones" in history

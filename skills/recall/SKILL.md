@@ -20,6 +20,11 @@ the sessions of X" (`B project X`). Answer that; don't describe document section
 for the word "section".
 
 In the table, `B` stands for that command. `claude-brain status` shows what is archived.
+
+**Every device.** When the cloud mirror is on, read commands (`search`, `recent`, `session`,
+`projects`, `project`) answer from Neon — sessions from all the user's computers, each tagged
+`@host`, under a header naming this machine. Without it, or offline (a note says so), they show
+this machine's archive only. `--local` forces this machine only.
 If `claude-brain` is not found (the plugin was installed during this session, before its folder joined the PATH), run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-brain"` instead — same arguments.
 
 A session's project is its git repo (by remote, so clones and subfolders match) or else its
@@ -64,8 +69,10 @@ messages are Claude Code's own compaction/recap summaries — dense, good starti
 best hits → `session <id>` (use `--after` to page if it says truncated) → answer, citing the
 session date and title.
 
-**Resume a past session** ("pick up the session about…"): find it (`search` / `project`), then check
-whether its original transcript still exists:
+**Resume a past session** ("pick up the session about…"): find it (`search` / `project`). If it
+is `@` another host, it can't be resumed natively here: offer to continue from the archive (below),
+or give the resume command to run on that machine. Otherwise check whether its original
+transcript still exists:
 `ls ~/.claude/projects/*/<full-session-id>.jsonl`.
 - Exists → give the user the native resume, which restores the full session. It only finds
   sessions of the current folder, so include the cd:

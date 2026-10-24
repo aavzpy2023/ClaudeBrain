@@ -460,7 +460,7 @@ header chooses the source: Cloud reads Neon live — every computer's sessions, 
 sync, labelled `@host` — and Local reads this machine's archive (instant, works offline). Cloud
 is the default when configured, and it runs through uv like the other cloud commands; without
 the cloud nothing extra is needed (Python's standard library). It shows your
-latest sessions and projects, every conversation as a chat — tool calls folded away, code
+latest sessions and projects, every conversation as a chat, newest message first — tool calls folded away, code
 formatted, a link on every message's time — the exact `claude --resume` command, and search
 across everything with the hits highlighted. Local pages open in milliseconds; Cloud ones in
 about a second or two (a new connection to Neon per page). `--no-cloud` forces local.
@@ -671,7 +671,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 126 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 127 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```

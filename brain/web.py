@@ -172,7 +172,7 @@ def session_page(src: Source, prefix: str) -> tuple[str, str]:
     sid = src.api.resolve_session(src.conn, prefix)
     s = src.row("SELECT * FROM sessions WHERE session_id = ?", (sid,))
     msgs = src.rows("SELECT uuid, ts, role, text FROM messages WHERE session_id = ? AND is_sidechain = 0 "
-                    "ORDER BY ts, uuid", (sid,))
+                    "ORDER BY ts DESC, uuid DESC", (sid,))  # newest first
     parts, tools = [], []
 
     def flush_tools():

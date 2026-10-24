@@ -43,6 +43,11 @@ def test_pages_render_projects_sessions_and_search(db):
         web.project_page(src, "nope")
 
 
+def test_session_shows_newest_messages_first(db):
+    page = web.session_page(_local(db), SID)[1]
+    assert page.index("and <code>a&lt;b</code>") < page.index("Decidimos usar GraphSAGE.") < page.index("regresión")
+
+
 def test_switch_marks_the_active_source_and_greys_out_a_missing_cloud():
     both = web.page("t", "", "cloud", cloud=True)
     assert "class='on' href='/?src=cloud'" in both and "href='/?src=local'" in both

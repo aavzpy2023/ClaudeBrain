@@ -426,23 +426,23 @@ $ claude-brain project phdthesis
 
 ```text
 $ claude-brain stats
-🧠 Your Claude history · since 2026-06-26 (121 days)
+🧠 Your Claude history · since 2026-03-02 (200 days)
 
-  30,530 messages in 181 sessions across 20 projects on 2 computers
-  You wrote 2,782 messages · 186k words
-  Claude wrote 5,275 replies · 638k words — about 7 novels
-  11,207 tool calls: Bash 8,819 · Read 840 · Edit 825 · Write 340 · Monitor 86
+  41,280 messages in 236 sessions across 14 projects on 2 computers
+  You wrote 3,910 messages · 212k words
+  Claude wrote 7,455 replies · 903k words — about 10 novels
+  15,840 tool calls: Bash 9,120 · Read 2,310 · Edit 1,980 · Write 540 · Grep 410
 
-  Busiest day      2026-09-23 (Wed) · 2,695 messages
-  Active days      58 of 121 · longest streak 25 days (2026-09-30 → 2026-10-24)
-  Longest session  c7688feb · 2,700 msgs · Continue the scraper rewrite
-  When you work    00 ▁▁▁ ▁▁▃▆▄▅▄▅▃▅▇▆█▆▆▇▇█▆▂ 23   (peak 21:00–22:00)
+  Busiest day      2026-07-14 (Tue) · 1,932 messages
+  Active days      121 of 200 · longest streak 19 days (2026-08-03 → 2026-08-21)
+  Longest session  5e0a91c2 · 1,604 msgs · Migrate checkout to PostgreSQL
+  When you work    00 ▁    ▁▃▆█▇▆▄▅▇█▇▆▅▃▂▂▁▁ 23   (peak 09:00–10:00)
 
-  Top projects     web-shop 23% · thesis 12% · data-pipeline 12% · +17 more
-  Sources          cli 64% · claude-vscode 32% · claude-ai 3% · claude-desktop <1%
+  Top projects     web-shop 31% · thesis 22% · data-pipeline 14% · +11 more
+  Sources          cli 58% · claude-vscode 35% · claude-ai 6% · claude-desktop <1%
 ```
 
-`--project P` for one project, `--since DATE` for a period. `/brain:setup` shows it right after
+(Sample numbers.) `--project P` for one project, `--since DATE` for a period. `/brain:setup` shows it right after
 installing — the first time you see your whole history in one place.
 
 ### Why is this file like this? (`blame`)

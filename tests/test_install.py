@@ -56,7 +56,14 @@ def test_merge_replaces_previous_install_and_keeps_everything_else():
     assert sum(install._is_ours(h) for h in stop_hooks) == 1
     assert out["hooks"]["Stop"][-1]["hooks"][0]["async"] is True
     assert len(out["hooks"]["SessionEnd"]) == 1
-    assert out["hooks"]["SessionStart"] == [{"hooks": [_cmds()["session_start"]]}]
+    assert out["hooks"]["SessionStart"] == [{"hooks": [_cmds()["session_start"], _cmds()["session_context"]]}]
+
+
+def test_briefing_hook_is_synchronous_so_it_can_inject_context():
+    hook = _cmds()["session_context"]
+    assert hook["args"] == ["/home/u/My Code/ClaudeBrain/brain/context.py", "--hook"]
+    assert "async" not in hook and hook["timeout"] <= 10
+    assert install._is_ours(hook)
 
 
 def test_merge_is_idempotent_and_keeps_longer_retention():

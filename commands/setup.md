@@ -1,5 +1,5 @@
 ---
-description: Check ClaudeBrain and apply the recommended settings (transcript retention, no-prompt recall)
+description: Check ClaudeBrain and apply the recommended settings (transcript retention, no-prompt recall, session briefing)
 allowed-tools: Bash(claude-brain *)
 ---
 
@@ -16,6 +16,11 @@ Check the user's ClaudeBrain install and offer the recommended settings.
    to set it to 3650.
 3. Permission. Offer to add `Bash(claude-brain *)` to `permissions.allow`, so recall never
    asks for approval (the skill only pre-approves it for the turn that invokes it).
+
+4. Session briefing. If status shows `briefing off`, offer it in two lines: each new session
+   would start with the titles of their latest 3 sessions in that project (~120 tokens, local,
+   no network), so Claude knows where they left off. It is turned on with
+   `claude-brain context on` (not a settings edit); `claude-brain context preview` shows it.
 
 Apply only what the user accepts, by editing `~/.claude/settings.json` (or
 `$CLAUDE_CONFIG_DIR/settings.json`): read it first and merge — never drop or reorder other keys.

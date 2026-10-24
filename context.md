@@ -80,6 +80,12 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   `mcp_setup.record_root()` on every hook run, so plugin updates don't break client configs.
   `mcp_setup` edits only the `claude-brain` entry of Claude Desktop's config (backup kept).
   Files: `brain/mcp_server.py`, `brain/mcp_launch.py`, `brain/mcp_setup.py::enable`, `brain/mcp_setup.py::record_root`
+- **Session briefing is opt-in and must stay cheap.** A synchronous SessionStart hook
+  (`context.py --hook`, timeout 10 s) emits `additionalContext` listing the latest N sessions of
+  the cwd's project (same naming as ingest: `find_repo` + `project_for`). Off unless
+  `<state dir>/context` holds N; only for `source` startup/clear; local DB only, no ingest or
+  network, swallows every error. Titles only — never message text.
+  Files: `brain/context.py::briefing`, `brain/context.py::run_hook`, `hooks/hooks.json`, `brain/install.py::commands`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

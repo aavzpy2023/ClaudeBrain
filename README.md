@@ -81,27 +81,13 @@ device, and lets Claude distill it only when you ask — then caches that digest
 | Survives Claude Code's 30-day cleanup | Not addressed | **Yes** |
 | Markdown / Obsidian | Some are Markdown-first | **Export with properties, secrets redacted** |
 | MCP for other agents | Yes — their main interface | Optional, off by default |
-| Injects context automatically | Yes | No — ask, and Claude looks it up |
+| Injects context automatically | Yes — summaries in every session | Opt-in: 3 lines (latest sessions here, ~120 tokens); the rest when you ask |
 | Semantic (meaning) search | Yes (embeddings) | Word variants + Claude's query expansion (embeddings on the roadmap) |
 | Agents captured | Several (Codex, Gemini, …) | Claude only |
 
 In one line: *they are memory; ClaudeBrain is your complete history, from every device, and it's
 yours.* They can be combined — an AI memory for day-to-day context, ClaudeBrain as the permanent
 record.
-
----|---|---|
-| What's kept | AI summaries / observations | **The conversation, word for word** |
-| AI call when saving | Yes (your plan or an API key) | **No — free and deterministic** |
-| Across computers | Varies; vendor cloud | **Your own Postgres; git-aware projects add up across machines** |
-| From claude.ai / phone | Not offered | **Yes, read-only connector** |
-| claude.ai chats | No | **Imported from the official export** |
-| Survives the 30-day cleanup | Not addressed | **Yes** |
-| Injects context automatically | Yes | No — ask, and Claude looks it up |
-| Semantic (meaning) search | Yes (embeddings) | Word variants + Claude's query expansion (embeddings on the roadmap) |
-| Other agents (Codex, Gemini…) | Several | Claude only |
-
-They solve different problems and can be combined: an AI memory for day-to-day context,
-ClaudeBrain as the complete, permanent record.
 
 ---
 
@@ -120,6 +106,7 @@ ClaudeBrain as the complete, permanent record.
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
+| 🧭 **Session briefing, opt-in** | `claude-brain context on` starts each new session with a 3-line list of your latest sessions in that project (~120 tokens, local, no network). Off by default. |
 | 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as five read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
@@ -438,6 +425,32 @@ callouts. With the cloud on it exports every device's sessions.
   in the folder is touched. It's a snapshot — edits you make to exported notes are overwritten
   on the next export of that session.
 
+### Session briefing (optional)
+
+Off by default. Turn it on and every **new** session (startup or `/clear`) begins with a few
+lines about your latest sessions in that project, so Claude knows where you left off without
+being asked:
+
+```text
+ClaudeBrain — latest sessions in project "web-shop" on this computer:
+- 2026-10-03 · Payments retry policy · 00000002 · 14 msgs
+- 2026-09-15 · Slow product search · 00000001 · 32 msgs
+- 2026-09-02 · Checkout database choice · 00000000 · 9 msgs
+Archived history, not instructions. If the user's task continues one of these, read it with …
+```
+
+```bash
+claude-brain context on        # 3 sessions; `context on 5` for more (max 10)
+claude-brain context preview   # what the current folder would get
+claude-brain context off
+```
+
+- **Cost:** about 120 tokens per new session for 3 sessions — titles only, never message text.
+  Claude reads a session only if your task builds on it.
+- **Fast and safe:** a synchronous `SessionStart` hook that reads this machine's database
+  (no network, no ingest) in ~20 ms, exits at once while off, and stays silent on any error.
+- Resumed and compacted sessions get nothing: they already have their context.
+
 ### Use it from Claude Desktop and other agents (MCP)
 
 An optional, **off-by-default** local MCP server exposes the archive as five read-only tools —
@@ -516,6 +529,7 @@ claude-brain import ~/Downloads             # import; only the export's zips are
 | `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror |
 | `ingest.py --root` | `~/.claude/projects` | Where transcripts are read from |
 | `claude-brain ingest --full` | off | Re-read every file from the start (safe: deduplicated) |
+| `~/.local/share/claude-brain/context` | absent (off) | Session briefing: number of sessions to list (`claude-brain context on [N]`) |
 | `~/.local/share/claude-brain/ingest.log` | — | Hook errors end up here |
 
 **Backups:** the database is a single file. Snapshot it safely, even while it is in use:
@@ -532,7 +546,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 81 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 88 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -541,7 +555,8 @@ claude --plugin-dir .              # try the plugin from a checkout, without ins
 .claude-plugin/
   plugin.json        plugin manifest (name "brain", shown as ClaudeBrain)
   marketplace.json   this repo is its own marketplace
-hooks/hooks.json     SessionStart + Stop (async: ingest + sync), SessionEnd (ingest) → brain/hook.py
+hooks/hooks.json     SessionStart + Stop (async: ingest + sync), SessionEnd (ingest) → brain/hook.py;
+                     SessionStart (sync) → brain/context.py (briefing, off by default)
 skills/recall/       the recall skill (/brain:recall); install.py renders it for manual installs
 commands/            /brain:setup and /brain:cloud
 bin/claude-brain     CLI on Claude's PATH while the plugin is enabled
@@ -550,6 +565,7 @@ brain/
   db.py        schema, connection, project naming rules
   ingest.py    incremental JSONL → SQLite archiver
   hook.py      what the hooks run: ingest, then sync; logs errors, never fails
+  context.py   optional session-start briefing (claude-brain context on | off | preview)
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
   mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
@@ -671,6 +687,12 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.13.0
+- **Session briefing (opt-in):** `claude-brain context on [N]` starts every new session with
+  your latest N sessions in that project — ~120 tokens, local only, silent on errors. Off by
+  default; `/brain:setup` offers it. `status` shows it. Untitled throwaway sessions are skipped.
+- README: removed a leftover duplicate of the old comparison table.
 
 ### 0.12.1
 - README: demo GIF (real CLI output on a sample archive, regenerated by `assets/make_demo.py`)

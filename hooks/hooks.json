@@ -12,6 +12,15 @@
             ],
             "timeout": 120,
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/brain/context.py",
+              "--hook"
+            ],
+            "timeout": 10
           }
         ]
       }

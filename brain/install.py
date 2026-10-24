@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parent.parent
 SKILL_TEMPLATE = REPO / "skills" / "recall" / "SKILL.md"
 PLUGIN_COMMAND = "claude-brain"  # what the skill calls; on PATH only when installed as a plugin
 # Substrings that identify hooks/rules written by any previous install (shell or exec form).
-OUR_HOOK_MARKS = ("brain/ingest.py", "brain/hook.py")
+OUR_HOOK_MARKS = ("brain/ingest.py", "brain/hook.py", "brain/context.py")
 OUR_RULE_MARKS = ("brain/query.py", "bin/claude-brain")
 RETENTION_DAYS = 3650
 
@@ -43,6 +43,9 @@ def commands(python: str, repo: Path, uv: str | None) -> dict:
     return {
         # SessionStart catches up before the first question (e.g. after days away or a reinstall).
         "session_start": dict(background),
+        # Synchronous so it can inject context; exits at once while the briefing is off.
+        "session_context": {"type": "command", "command": _posix(python),
+                            "args": [_posix(repo / "brain" / "context.py"), "--hook"], "timeout": 10},
         "stop": background,
         "session_end": {"type": "command", "command": _posix(python), "args": [hook], "timeout": 120},
         "query": f"{shlex.quote(_posix(python))} {shlex.quote(_posix(repo / 'bin' / 'claude-brain'))}",
@@ -57,10 +60,10 @@ def _is_ours(hook: dict) -> bool:
 def merge_settings(settings: dict, cmds: dict) -> dict:
     """Return settings with ClaudeBrain's hooks, permission and retention set; others untouched."""
     hooks = settings.setdefault("hooks", {})
-    for event, hook in (("SessionStart", cmds["session_start"]), ("Stop", cmds["stop"]),
-                        ("SessionEnd", cmds["session_end"])):
+    for event, ours in (("SessionStart", [cmds["session_start"], cmds["session_context"]]),
+                        ("Stop", [cmds["stop"]]), ("SessionEnd", [cmds["session_end"]])):
         groups = [g for g in hooks.get(event, []) if not any(_is_ours(h) for h in g.get("hooks", []))]
-        groups.append({"hooks": [hook]})
+        groups.append({"hooks": ours})
         hooks[event] = groups
 
     allow = settings.setdefault("permissions", {}).setdefault("allow", [])

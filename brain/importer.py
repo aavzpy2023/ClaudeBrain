@@ -17,7 +17,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect, load_aliases, project_for
+from brain.db import connect, forgotten_ids, load_aliases, project_for
 from brain.ingest import TOOL_INPUT_CHARS, TOOL_RESULT_CHARS, _clip, refresh_session_stats
 
 ENTRYPOINT = "claude-ai"
@@ -140,9 +140,10 @@ def import_export(conn: sqlite3.Connection, conversations: list, projects: list)
     aliases = load_aliases(conn)
     names = {p.get("uuid"): p.get("name") for p in projects if p.get("uuid")}
     stats = Counter()
+    forgotten = forgotten_ids(conn)
     for conv in conversations:
         sid = conv.get("uuid")
-        if not sid:
+        if not sid or sid in forgotten:
             continue
         project_name = names.get(_project_uuid(conv))
         # Pseudo cwd: project_for treats it like a folder path, so aliases on the claude.ai

@@ -113,6 +113,14 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   streaks and the hour profile. Subagent messages excluded.
   Output encoding: entry points call `brain.utf8_output()` (Windows pipes default to cp1252).
   Files: `brain/stats.py::compute`, `brain/query.py::stats_data`, `brain/remote.py::stats_data`, `brain/__init__.py::utf8_output`
+- **Forgetting is tombstoned and synced.** `forget` deletes locally and records
+  `forgotten(session_id, synced)`; `ingest_file` and `import_export` skip tombstoned ids (so
+  `ingest --full` can't resurrect them). Cloud work goes through the next sync:
+  `sync_forgotten` runs before any push — deletes pending tombstones' rows in Neon, applies
+  `pending_remote` ops (`redact` text → `[REDACTED:manual]`, `project_digests`), then pulls
+  Neon's `forgotten` and drops those sessions locally. Neon schema v2 adds `forgotten`.
+  Claude Code transcripts are only deleted with `--transcripts`.
+  Files: `brain/forget.py::forget_sessions`, `brain/forget.py::redact_text`, `brain/sync.py::sync_forgotten`, `brain/ingest.py::ingest_file`, `remote/schema.sql`
 - **Markdown export** works over any read API (`query` or `remote`), so with the cloud on it
   exports every device. Note names `<date>_<slug>_<id8>.md`, index `<project>.md`; writes only
   changed files and never deletes; redacts with `sync.redact` unless `--no-redact`.

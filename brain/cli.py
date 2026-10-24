@@ -30,6 +30,9 @@ Recall (local):
                                   Markdown notes per session + project index (Obsidian-friendly)
 
 Archive:
+  forget session <id>… | project <name> | text "<leaked string>"  [--yes] [--transcripts]
+                                  remove sessions or a string here and in the cloud (dry run
+                                  without --yes; forgotten sessions never come back)
   ingest [--full]                 archive new Claude Code transcripts (the hooks do this)
   import <export> [--inspect]     import a claude.ai data export (zip, folder or json)
   status                          what is archived, pending sync, retention, cloud setup
@@ -175,6 +178,10 @@ def main(argv=None) -> None:
         importer.main(rest)
     elif command == "status":
         status()
+    elif command == "forget":
+        from brain import forget
+
+        forget.main(rest)
     elif command == "context":
         from brain import context
 

@@ -3,7 +3,7 @@
 -- database's recorded version is lower than this one (never lower: see sync.ensure_schema).
 -- Bump schema_version on every change, and keep changes additive — machines still running an
 -- older ClaudeBrain keep pushing with the columns they know.
--- schema_version: 1
+-- schema_version: 2
 
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
@@ -90,6 +90,13 @@ BEGIN
         ALTER TABLE digests ADD CONSTRAINT digests_origin_key UNIQUE (origin);
     END IF;
 END $$;
+
+-- Sessions forgotten on any machine (`claude-brain forget`): every sync deletes them from here
+-- and pulls the list, so each machine drops them from its own archive too. (v2)
+CREATE TABLE IF NOT EXISTS forgotten (
+    session_id   text PRIMARY KEY,
+    forgotten_at text NOT NULL
+);
 
 -- Folder-name aliases shared by all machines (last write wins, merged by sync.py).
 CREATE TABLE IF NOT EXISTS aliases (

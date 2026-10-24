@@ -87,6 +87,21 @@ CREATE TABLE IF NOT EXISTS folder_aliases (
     project    TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- Sessions the user asked to forget (tombstones): ingest and import skip them; sync removes
+-- them from the cloud (synced = 1 once done) and pulls other machines' tombstones.
+CREATE TABLE IF NOT EXISTS forgotten (
+    session_id   TEXT PRIMARY KEY,
+    forgotten_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    synced       INTEGER NOT NULL DEFAULT 0
+);
+
+-- Cloud work `forget` leaves for the next sync: ('redact', text) or ('project_digests', name).
+CREATE TABLE IF NOT EXISTS pending_remote (
+    op  TEXT NOT NULL,
+    arg TEXT NOT NULL,
+    PRIMARY KEY (op, arg)
+);
 """
 
 
@@ -183,6 +198,10 @@ def project_for(cwd: str | None, aliases: dict[str, str],
     if (parts[:1] == ["tmp"] and cwd.startswith("/")) or (temp and parts[: len(temp)] == temp):
         return "tmp"
     return normalize_name(parts[-1]) if parts else "root"
+
+
+def forgotten_ids(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT session_id FROM forgotten")}
 
 
 def project_of_cwd(conn: sqlite3.Connection, cwd: str) -> str:

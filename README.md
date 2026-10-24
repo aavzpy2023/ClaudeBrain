@@ -80,6 +80,7 @@ device, and lets Claude distill it only when you ask — then caches that digest
 | Markdown / Obsidian | Some are Markdown-first | **Export with properties, secrets redacted** |
 | MCP for other agents | Yes — their main interface | Optional, off by default |
 | Why a file is the way it is | Not covered | **`blame <file>`: the sessions that changed it, your request behind each change, the commits** |
+| Delete what you regret | Varies | **`forget`: sessions, projects or a leaked string — local, cloud, every computer** |
 | Injects context automatically | Yes — summaries in every session | Opt-in: 3 lines (latest sessions here, ~120 tokens); the rest when you ask |
 | Semantic (meaning) search | Yes (embeddings) | Word variants + Claude's query expansion (embeddings on the roadmap) |
 | Agents captured | Several (Codex, Gemini, …) | Claude only |
@@ -99,6 +100,7 @@ record.
 | 📥 **claude.ai chats too** | Import the official data export (web, Desktop and mobile chats); chats in a claude.ai Project join the Claude Code project of the same name. |
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
+| 🧹 **Forget, for real** | `claude-brain forget session <id>`, `project <name>` or `text "<leaked string>"` removes them here and in the cloud, on every computer — a dry run until `--yes`; forgotten sessions never come back. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -618,7 +620,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 105 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 111 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -640,6 +642,7 @@ brain/
   context.py   optional session-start briefing (claude-brain context on | off | preview)
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
+  forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
   mcp_server.py   read-only MCP server (stdio) over the same read API, run through uv
@@ -664,6 +667,27 @@ as is.
 ---
 
 ## ❓ FAQ
+
+<details>
+<summary><b>I pasted a password into a session. How do I get it out?</b></summary>
+
+```bash
+claude-brain forget text "the-password"          # dry run: where it appears
+claude-brain forget text "the-password" --yes    # replace it with [REDACTED:manual]
+```
+
+It is replaced in the archive, digests and titles here, and in Neon on the next sync. Claude
+Code's own transcript files still contain it — the command lists them; delete them if you
+don't need to resume those sessions. **Rotate the password anyway**: forgetting it doesn't
+un-leak it. Other computers keep their own local copy of *their* sessions; run it there too if
+it was pasted there.
+
+To drop whole conversations: `claude-brain forget session <id>` (several ids, or
+`project <name>`). They are deleted here, from the cloud, and from your other computers on
+their next sync, and they never come back — ingest and import skip forgotten sessions, even
+if you keep using that session. Add `--transcripts` to delete Claude Code's files too
+(those sessions can't be resumed afterwards).
+</details>
 
 <details>
 <summary><b>Do I have to open each project for it to be archived / synced?</b></summary>
@@ -762,6 +786,14 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.17.0
+- **`claude-brain forget`** `session <id>… | project <name> | text "<string>"`: deletes sessions
+  (or replaces a leaked string with `[REDACTED:manual]`) in the archive, digests and titles, and
+  in Neon on the next sync. A dry run until `--yes`. Forgotten sessions leave a tombstone that
+  ingest and import respect and that other computers pull, so they never come back.
+  `--transcripts` also deletes Claude Code's own files.
+- Cloud schema v2 (the `forgotten` table), applied automatically on the next sync.
 
 ### 0.16.0
 - **`claude-brain stats`**: your history in numbers — messages and words, busiest day, longest
@@ -936,7 +968,9 @@ repo (same remote) or the same aliased folder end up under one project name.
   byte of every command output.
 - Transcripts may contain secrets you pasted into a session. The local database keeps them
   as is; the cloud mirror gets a redacted copy, but redaction is pattern-based — an unusual
-  secret format can slip through.
+  secret format can slip through. `claude-brain forget text "…"` removes a specific one.
+- A computer still on a version before 0.17 keeps pushing the *session rows* of its own
+  sessions that another computer forgot (not their messages) until it is updated.
 - From claude.ai the brain is read-only for now: summaries can only be saved from Claude Code.
 - **No semantic search.** Search matches words and their variants, not meaning: "speed
   problems" won't find "it's very slow" unless Claude expands the query (it's told to, with

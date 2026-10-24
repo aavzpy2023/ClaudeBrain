@@ -171,3 +171,51 @@ def test_write_env_keeps_other_lines_and_is_private(tmp_path):
         assert env_problems(env) == []
         env.chmod(0o644)
         assert "chmod 600" in env_problems(env)[0]
+
+
+class RecordingNeon:
+    """Records statements; answers the tombstone query with other machines' forgotten ids."""
+
+    def __init__(self, theirs=()):
+        self.theirs = list(theirs)
+        self.sql = []
+
+    def execute(self, query, params=None):
+        self.sql.append((" ".join(str(query).split()), params))
+        self.rows = [(sid,) for sid in self.theirs] if str(query) == "SELECT session_id FROM forgotten" else []
+        return self
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def commit(self):
+        pass
+
+
+def test_sync_forgotten_pushes_tombstones_redactions_and_pulls_others(conn, root):
+    from conftest import SID, SID2, rec, session_records, write_jsonl
+
+    from brain import forget
+    from brain.db import forgotten_ids
+    from brain.ingest import ingest
+    from brain.sync import sync_forgotten
+
+    write_jsonl(root / "p" / f"{SID}.jsonl", session_records())
+    write_jsonl(root / "q" / f"{SID2}.jsonl", [rec("x1", "user", "hello there", "2026-10-02T09:00:00Z", sid=SID2)])
+    ingest(conn, root)
+    forget.forget_sessions(conn, [SID])
+    forget.redact_text(conn, "GraphSAGE")
+
+    neon = RecordingNeon(theirs=[SID, SID2])  # SID2 was forgotten on another computer
+    assert sync_forgotten(conn, neon) == 1
+    statements = [q for q, _ in neon.sql]
+    assert any(q.startswith("DELETE FROM messages WHERE session_id = ANY") for q in statements)
+    assert any(q.startswith("UPDATE messages SET text = replace") for q in statements)
+    assert conn.execute("SELECT COUNT(*) FROM pending_remote").fetchone()[0] == 0
+    assert conn.execute("SELECT MIN(synced) FROM forgotten").fetchone()[0] == 1
+    assert forgotten_ids(conn) == {SID, SID2}
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0  # SID2 dropped here too
+
+    again = RecordingNeon(theirs=[SID, SID2])
+    assert sync_forgotten(conn, again) == 0
+    assert not any(q.startswith("DELETE") for q, _ in again.sql)  # nothing left to push

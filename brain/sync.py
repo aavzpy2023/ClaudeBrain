@@ -215,6 +215,41 @@ def record_sync(remote) -> None:
     remote.commit()
 
 
+def sync_forgotten(local: sqlite3.Connection, remote) -> int:
+    """Apply `forget` to the cloud and pull other machines' tombstones; returns sessions
+    dropped locally because another machine forgot them."""
+    from brain.forget import REDACTED, forget_sessions
+
+    pending = [r[0] for r in local.execute("SELECT session_id FROM forgotten WHERE synced = 0")]
+    if pending:
+        remote.execute("INSERT INTO forgotten (session_id, forgotten_at) SELECT unnest(%s::text[]), %s "
+                       "ON CONFLICT DO NOTHING", (pending, _now()))
+        remote.execute("DELETE FROM messages WHERE session_id = ANY(%s)", (pending,))
+        remote.execute("DELETE FROM sessions WHERE session_id = ANY(%s)", (pending,))
+        remote.execute("DELETE FROM digests WHERE scope = 'session' AND key = ANY(%s)", (pending,))
+        remote.commit()
+        local.executemany("UPDATE forgotten SET synced = 1 WHERE session_id = ?", [(i,) for i in pending])
+        local.commit()
+    for op, arg in local.execute("SELECT op, arg FROM pending_remote").fetchall():
+        if op == "redact":
+            remote.execute("UPDATE messages SET text = replace(text, %s, %s) WHERE strpos(text, %s) > 0",
+                           (arg, REDACTED, arg))
+            remote.execute("UPDATE digests SET content = replace(content, %s, %s) WHERE strpos(content, %s) > 0",
+                           (arg, REDACTED, arg))
+            remote.execute("UPDATE sessions SET title = replace(title, %s, %s) WHERE strpos(title, %s) > 0",
+                           (arg, REDACTED, arg))
+        elif op == "project_digests":
+            remote.execute("DELETE FROM digests WHERE scope = 'project' AND key = %s", (arg,))
+        remote.commit()
+        local.execute("DELETE FROM pending_remote WHERE op = ? AND arg = ?", (op, arg))
+        local.commit()
+    known = {r[0] for r in local.execute("SELECT session_id FROM forgotten")}
+    theirs = [r[0] for r in remote.execute("SELECT session_id FROM forgotten") if r[0] not in known]
+    remote.commit()
+    forget_sessions(local, theirs, synced=True)
+    return len(theirs)
+
+
 def remote_status(remote) -> list[str]:
     local, found = schema_version(), remote_version(remote)
     if found is None:
@@ -426,6 +461,7 @@ def main(argv=None) -> None:
             say("read-only role already has its password — left alone, so the claude.ai connector "
                 "keeps working")
         local = connect()
+        sync_forgotten(local, remote)  # first, so nothing forgotten is pushed again
         sync_aliases(local, remote)  # before sessions, so relabelled projects go up in this run
         sent = push_messages(local, remote)
         push_sessions(local, remote)

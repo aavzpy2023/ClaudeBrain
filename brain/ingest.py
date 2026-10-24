@@ -14,7 +14,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain.db import connect, load_aliases, project_for, resolve_repos
+from brain.db import connect, forgotten_ids, load_aliases, project_for, resolve_repos
 
 DEFAULT_ROOT = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
 TOOL_INPUT_CHARS = 300
@@ -116,8 +116,10 @@ def _upsert_session(conn: sqlite3.Connection, record: dict, aliases) -> None:
     )
 
 
-def ingest_file(conn: sqlite3.Connection, path: Path, start: int, aliases, touched: set) -> int:
-    """Ingest complete lines from byte offset `start`; return the new offset."""
+def ingest_file(conn: sqlite3.Connection, path: Path, start: int, aliases, touched: set,
+                forgotten: frozenset | set = frozenset()) -> int:
+    """Ingest complete lines from byte offset `start`; return the new offset. Sessions in
+    `forgotten` are skipped, even if they go on."""
     offset = start
     with path.open("rb") as fh:
         fh.seek(start)
@@ -132,7 +134,7 @@ def ingest_file(conn: sqlite3.Connection, path: Path, start: int, aliases, touch
             except json.JSONDecodeError:
                 continue
             session_id = record.get("sessionId")
-            if not session_id:
+            if not session_id or session_id in forgotten:
                 continue
 
             if record.get("type") in ("ai-title", "custom-title"):
@@ -195,6 +197,7 @@ def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = Fal
         for r in conn.execute("SELECT path, size, mtime, offset FROM files")
     }
     stats = {"files": 0, "sessions": 0}
+    forgotten = forgotten_ids(conn)
     for path in sorted(root.rglob("*.jsonl")):
         st = path.stat()
         size, mtime, offset = known.get(str(path), (None, None, 0))
@@ -203,7 +206,7 @@ def ingest(conn: sqlite3.Connection, root: Path = DEFAULT_ROOT, full: bool = Fal
         elif size == st.st_size and mtime == st.st_mtime:
             continue
         touched: set = set()
-        new_offset = ingest_file(conn, path, offset, aliases, touched)
+        new_offset = ingest_file(conn, path, offset, aliases, touched, forgotten)
         refresh_session_stats(conn, touched)
         conn.execute(
             "INSERT OR REPLACE INTO files(path, size, mtime, offset) VALUES (?, ?, ?, ?)",

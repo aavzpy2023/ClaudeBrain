@@ -1,7 +1,19 @@
 -- Neon (Postgres) mirror of the local brain, queried from claude.ai through the Neon MCP
--- connector as the read-only role brain_reader. Idempotent: applied by `sync.py --init`.
+-- connector as the read-only role brain_reader. Idempotent: every sync applies it when the
+-- database's recorded version is lower than this one (never lower: see sync.ensure_schema).
+-- Bump schema_version on every change, and keep changes additive — machines still running an
+-- older ClaudeBrain keep pushing with the columns they know.
+-- schema_version: 1
 
 CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- Bookkeeping for sync.py: schema_version, reader_password, synced:<host>. Not granted to
+-- brain_reader.
+CREATE TABLE IF NOT EXISTS brain_meta (
+    key        text PRIMARY KEY,
+    value      text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
 
 -- unaccent() is only STABLE; generated columns and indexes need an IMMUTABLE wrapper.
 CREATE OR REPLACE FUNCTION brain_unaccent(text) RETURNS text
@@ -219,9 +231,9 @@ $$;
 
 -- Read-only role for the MCP connector (?roleName=brain_reader). Created here with SQL on
 -- purpose: Console-created roles join neon_superuser and can read everything.
--- The MCP logs in as this role, so it needs a password; set it once, outside this file:
---   ALTER ROLE brain_reader WITH LOGIN PASSWORD '<random>';
--- Without one the connector fails with "missing authentication credentials".
+-- The MCP logs in as this role, so it needs a password, set once by `claude-brain cloud setup`
+-- (sync.set_reader_password); without one the connector fails with "missing authentication
+-- credentials".
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'brain_reader') THEN

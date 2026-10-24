@@ -60,3 +60,114 @@ def test_direct_url_bypasses_neon_pooler():
     assert direct_url(pooled) == "postgresql://owner:p%40ss@ep-cool-name-123.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
     direct = "postgresql://owner:x@ep-cool-name-123.c-6.us-east-2.aws.neon.tech/neondb"
     assert direct_url(direct) == direct
+
+
+class FakeNeon:
+    """Just enough of a psycopg connection for the schema/password bookkeeping in sync.py."""
+
+    def __init__(self, version=None, legacy=False):
+        self.tables = {"messages"} if legacy or version is not None else set()
+        self.meta = {}
+        if version is not None:
+            self.tables.add("brain_meta")
+            self.meta["schema_version"] = str(version)
+        self.applied = self.passwords = 0
+        self.locked = False
+        self.rows = []
+
+    def execute(self, query, params=None):
+        q = str(query)  # psycopg's sql.Composed prints its parts, so ALTER ROLE shows up too
+        self.rows = []
+        if q.startswith("SELECT to_regclass"):
+            self.rows = [("brain_meta" in self.tables, "messages" in self.tables)]
+        elif q.startswith("SELECT value FROM brain_meta"):
+            self.rows = [(self.meta[params[0]],)] if params[0] in self.meta else []
+        elif q.startswith("INSERT INTO brain_meta"):
+            self.meta[params[0]] = params[1]
+        elif q.startswith("SELECT pg_advisory_xact_lock"):
+            self.locked = True
+        elif "CREATE TABLE IF NOT EXISTS brain_meta" in q:
+            self.applied += 1
+            self.tables |= {"brain_meta", "messages"}
+        elif "ALTER ROLE brain_reader" in q:
+            self.passwords += 1
+        else:
+            raise AssertionError(f"unexpected query: {q[:80]}")
+        return self
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def commit(self):
+        pass
+
+
+def test_schema_version_is_declared_in_schema_sql():
+    from brain.sync import schema_version
+
+    assert schema_version() >= 1
+    assert schema_version("-- schema_version: 7\nCREATE …") == 7
+
+
+def test_schema_plan_never_goes_backwards():
+    from brain.sync import schema_plan
+
+    assert schema_plan(2, None) == "apply"       # empty database
+    assert schema_plan(2, 0) == "apply"          # mirror from before versioning
+    assert schema_plan(2, 1) == "apply"
+    assert schema_plan(2, 2) == "current"
+    assert schema_plan(2, 2, force=True) == "apply"
+    assert schema_plan(2, 3) == "newer"
+    assert schema_plan(2, 3, force=True) == "newer"  # an outdated machine must not roll back
+
+
+def test_empty_neon_gets_schema_and_then_a_connector_password():
+    from brain.sync import ensure_schema, reader_ready, schema_version, set_reader_password
+
+    neon = FakeNeon()
+    assert ensure_schema(neon) == ("apply", None)
+    assert neon.applied == 1 and neon.locked
+    assert neon.meta["schema_version"] == str(schema_version())
+    assert not reader_ready(neon)  # first computer: setup will set it
+    set_reader_password(neon)
+    assert neon.passwords == 1 and reader_ready(neon)
+
+
+def test_mirror_from_before_versioning_keeps_its_connector_password():
+    from brain.sync import ensure_schema, reader_ready
+
+    neon = FakeNeon(legacy=True)
+    assert ensure_schema(neon) == ("apply", 0)
+    assert neon.meta["reader_password"] == "assumed"
+    assert reader_ready(neon)  # so `cloud setup` on another computer won't rotate it
+
+
+def test_current_and_newer_schemas_are_left_alone():
+    from brain.sync import ensure_schema, schema_version
+
+    current = FakeNeon(version=schema_version())
+    assert ensure_schema(current) == ("current", schema_version())
+    newer = FakeNeon(version=schema_version() + 1)
+    assert ensure_schema(newer, force=True) == ("newer", schema_version() + 1)
+    assert current.applied == newer.applied == 0
+    assert newer.meta["schema_version"] == str(schema_version() + 1)
+
+
+def test_write_env_keeps_other_lines_and_is_private(tmp_path):
+    import os
+    import stat
+
+    from brain.sync import env_problems, env_value, write_env
+
+    env = tmp_path / "cfg" / ".env"
+    write_env({"NEON_URL": "postgresql://a"}, env)
+    env.write_text(env.read_text() + "OTHER=keep\n")
+    write_env({"NEON_URL": "postgresql://b", "NEON_PROJECT_ID": "p-1"}, env)
+    assert env_value("NEON_URL", env) == "postgresql://b"
+    assert env_value("NEON_PROJECT_ID", env) == "p-1"
+    assert "OTHER=keep" in env.read_text() and env.read_text().count("NEON_URL") == 1
+    if os.name != "nt":
+        assert stat.S_IMODE(env.stat().st_mode) == 0o600
+        assert env_problems(env) == []
+        env.chmod(0o644)
+        assert "chmod 600" in env_problems(env)[0]

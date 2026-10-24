@@ -56,6 +56,17 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   the repo/plugin folder. `remote/claude_ai_instructions.md` is a template (`{{NEON_PROJECT_ID}}`)
   rendered by `sync.py --claude-ai`; no personal ids in the repo.
   Files: `brain/sync.py::redact`, `brain/sync.py::uv_command`, `brain/sync.py::main`, `remote/schema.sql`, `remote/claude_ai_instructions.md`
+- **Cloud schema is versioned and only moves forward.** `remote/schema.sql` declares
+  `-- schema_version: N`; every sync runs `ensure_schema` first: applies the file under
+  `pg_advisory_xact_lock` when Neon's `brain_meta.schema_version` is lower (or absent), never when
+  it is higher — an outdated machine keeps pushing but must not roll functions back. So schema
+  changes must bump N and stay additive. `brain_meta` also holds `reader_password` (set by
+  `set_reader_password`; `assumed` for mirrors from before versioning) and `synced:<host>`.
+  `cloud setup` sets the connector password only when `reader_password` is absent — rotating it
+  breaks the claude.ai connector, so only explicit `cloud reader-password` does that.
+  Credentials: `cloud connect` (cli.py, getpass, refuses without a TTY) → `sync.write_env` (0600);
+  `env_problems` only warns, never blocks.
+  Files: `brain/sync.py::ensure_schema`, `brain/sync.py::schema_plan`, `brain/sync.py::remote_status`, `brain/sync.py::write_env`, `brain/cli.py::cloud_connect`, `remote/schema.sql`
 - **Reads go to Neon when the cloud is on.** `query.main` sends `READ_COMMANDS` to
   `brain/remote.py` (uv + psycopg, direct endpoint, read-only connection), which implements the
   same read API with Postgres SQL and reuses `query._run` for identical output plus `@host`.

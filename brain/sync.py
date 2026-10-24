@@ -1,7 +1,8 @@
 """Push the local brain to Neon Postgres, redacting secrets. Safe to run offline (no-op).
 
-Usage: uv run brain/sync.py [--init] [--reader-password] [--quiet]
+Usage: uv run brain/sync.py [--setup | --status | --init | --reader-password] [--quiet]
        python3 brain/sync.py --claude-ai [--project-id ID]   (no database access, no psycopg)
+Every run first upgrades the cloud schema if it is older than this version (never if newer).
 Reads NEON_URL (and NEON_PROJECT_ID) from the environment or ~/.config/claude-brain/.env.
 """
 import argparse
@@ -13,6 +14,7 @@ import socket
 import sqlite3
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -26,6 +28,7 @@ SCHEMA_FILE = Path(__file__).resolve().parent.parent / "remote" / "schema.sql"
 INSTRUCTIONS_FILE = SCHEMA_FILE.with_name("claude_ai_instructions.md")
 PSYCOPG = "psycopg[binary]>=3.2"
 BATCH = 2000
+SCHEMA_LOCK = 4862101  # pg_advisory_xact_lock key: machines upgrading at once take turns
 
 _SECRETS = [
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S),
@@ -103,6 +106,94 @@ def claude_ai_instructions(project_id: str) -> str:
     return INSTRUCTIONS_FILE.read_text().replace("{{NEON_PROJECT_ID}}", project_id)
 
 
+def env_problems(env_file: Path | None = None) -> list[str]:
+    """Why the credentials file is unsafe or unusable, as fixes to run. POSIX only: Windows
+    keeps it private through the user profile's ACLs."""
+    path = env_file or ENV_FILE
+    if os.name == "nt" or not path.exists():
+        return []
+    st = path.stat()
+    problems = []
+    if st.st_uid != os.getuid():
+        problems.append(f"{path} belongs to another user: sudo chown \"$USER\": {path}")
+    if st.st_mode & 0o077:
+        problems.append(f"{path} is readable by other users: chmod 600 {path}")
+    return problems
+
+
+def write_env(updates: dict[str, str], env_file: Path | None = None) -> Path:
+    """Set keys in the .env file, keeping its other lines; created private (0600)."""
+    path = env_file or ENV_FILE
+    lines = path.read_text().splitlines() if path.exists() else []
+    lines = [l for l in lines if l.split("=", 1)[0].strip() not in updates]
+    lines += [f"{key}={value}" for key, value in updates.items()]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    if os.name != "nt":
+        os.chmod(path, 0o600)  # O_CREAT's mode doesn't apply to an existing file
+    return path
+
+
+def schema_version(sql_text: str | None = None) -> int:
+    """The version declared in schema.sql's header (`-- schema_version: N`)."""
+    match = re.search(r"^-- schema_version: (\d+)", sql_text or SCHEMA_FILE.read_text(), re.M)
+    return int(match[1]) if match else 0
+
+
+def _meta(remote, key: str) -> str | None:
+    row = remote.execute("SELECT value FROM brain_meta WHERE key = %s", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def _set_meta(remote, key: str, value: str) -> None:
+    remote.execute(
+        "INSERT INTO brain_meta (key, value) VALUES (%s, %s) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()", (key, value))
+
+
+def remote_version(remote) -> int | None:
+    """None for an empty database, 0 for a mirror from before versioning (≤0.13), else the
+    recorded schema version."""
+    has_meta, has_messages = remote.execute(
+        "SELECT to_regclass('brain_meta') IS NOT NULL, to_regclass('messages') IS NOT NULL").fetchone()
+    if has_meta:
+        return int(_meta(remote, "schema_version") or 0)
+    return 0 if has_messages else None
+
+
+def schema_plan(local: int, found: int | None, force: bool = False) -> str:
+    """'apply', 'current', or 'newer' — a newer cloud schema is never overwritten, even forced:
+    a machine running an older ClaudeBrain would roll back the search functions."""
+    if found is not None and found > local:
+        return "newer"
+    return "apply" if found is None or found < local or force else "current"
+
+
+def ensure_schema(remote, force: bool = False) -> tuple[str, int | None]:
+    """Bring the cloud schema up to this version if needed; returns (action, version found)."""
+    local = schema_version()
+    found = remote_version(remote)
+    if schema_plan(local, found, force) == "apply":
+        remote.execute("SELECT pg_advisory_xact_lock(%s)", (SCHEMA_LOCK,))
+        found = remote_version(remote)  # another machine may have upgraded it meanwhile
+    action = schema_plan(local, found, force)
+    if action == "apply":
+        remote.execute(SCHEMA_FILE.read_text())
+        _set_meta(remote, "schema_version", str(local))
+        if found == 0 and _meta(remote, "reader_password") is None:
+            # A pre-versioning mirror was set up by hand, its connector presumably working:
+            # never let `cloud setup` rotate that password.
+            _set_meta(remote, "reader_password", "assumed")
+    remote.commit()
+    return action, found
+
+
+def reader_ready(remote) -> bool:
+    return _meta(remote, "reader_password") is not None
+
+
 def set_reader_password(remote) -> None:
     """Give brain_reader a random password: the Neon connector logs in as that role. Never shown;
     Neon hands it to the connector itself. Re-running rotates it (reconnect the connector)."""
@@ -110,7 +201,45 @@ def set_reader_password(remote) -> None:
 
     remote.execute(sql.SQL("ALTER ROLE brain_reader WITH LOGIN PASSWORD {}").format(
         sql.Literal(secrets.token_urlsafe(32))))
+    _set_meta(remote, "reader_password", _now())
     remote.commit()
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def record_sync(remote) -> None:
+    _set_meta(remote, f"synced:{socket.gethostname()}", _now())
+    remote.commit()
+
+
+def remote_status(remote) -> list[str]:
+    local, found = schema_version(), remote_version(remote)
+    if found is None:
+        return ["schema     none — the database is empty: run `claude-brain cloud setup`"]
+    note = {"newer": "  ← update ClaudeBrain on this machine", "apply": "  ← upgraded on the next sync",
+            "current": ""}[schema_plan(local, found)]
+    lines = [f"schema     v{found} in Neon, v{local} here{note}"]
+    messages = remote.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    lines.append(f"stored     {messages} messages")
+    synced = {}
+    if found == 0:
+        lines.append("connector  set up before 0.14 (password not managed here)")
+    else:
+        reader = _meta(remote, "reader_password")
+        lines.append("connector  " + {None: "no password yet: run `claude-brain cloud setup`",
+                                      "assumed": "set up before 0.14 (password not managed here)"}
+                     .get(reader, f"password set {reader[:10] if reader else ''}"))
+        synced = {k.split(":", 1)[1]: v for k, v in remote.execute(
+            "SELECT key, value FROM brain_meta WHERE key LIKE 'synced:%'")}
+    for host, sessions, last in remote.execute(
+            "SELECT host, COUNT(*), MAX(last_ts) FROM sessions GROUP BY host ORDER BY 3 DESC NULLS LAST"):
+        when = f", last sync {synced[host][:16].replace('T', ' ')}" if host in synced else ""
+        lines.append(f"  {host or '(before 0.10: no host)':<24} {sessions:>5} sessions, last activity "
+                     f"{(last or '—')[:10]}{when}")
+    remote.rollback()
+    return lines
 
 
 def _watermark(local: sqlite3.Connection, key: str) -> int:
@@ -233,9 +362,15 @@ def sync_aliases(local: sqlite3.Connection, remote) -> int:
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--init", action="store_true", help="create/upgrade the remote schema first")
+    parser.add_argument("--setup", action="store_true",
+                        help="first-time or new-machine setup: schema, connector password only if "
+                             "missing, upload")
+    parser.add_argument("--status", action="store_true", help="show the cloud's state, push nothing")
+    parser.add_argument("--init", action="store_true",
+                        help="re-apply the schema even if its version is current (repair)")
     parser.add_argument("--reader-password", action="store_true",
-                        help="set a random password on brain_reader (needed once by the connector)")
+                        help="give brain_reader a new random password (rotates it: reconnect the "
+                             "claude.ai connector afterwards)")
     parser.add_argument("--claude-ai", action="store_true",
                         help="print the claude.ai connector setup for your Neon project and exit")
     parser.add_argument("--project-id", help="Neon project id (default: NEON_PROJECT_ID)")
@@ -265,23 +400,40 @@ def main(argv=None) -> None:
             print(f"offline, skipping sync: {exc}".splitlines()[0])
         return
 
-    local = connect()
     with remote:
-        if args.init:
-            remote.execute(SCHEMA_FILE.read_text())
-            remote.commit()
+        if args.status:
+            print("\n".join(remote_status(remote)))
+            return
+        action, found = ensure_schema(remote, force=args.init)
+        say = (lambda *a: None) if args.quiet else print
+        if action == "apply":
+            say(f"cloud schema {'created' if found is None else f'upgraded v{found} → v{schema_version()}'}")
+        elif action == "newer":
+            say(f"note: the cloud schema (v{found}) is newer than this ClaudeBrain's "
+                f"(v{schema_version()}): update ClaudeBrain here. Syncing continues.")
+        first_time = False
         if args.reader_password:
             set_reader_password(remote)
-            if not args.quiet:
-                print("brain_reader has a new password (not shown); reconnect the claude.ai connector "
-                      "if it was already set up")
+            say("brain_reader has a new password (not shown); reconnect the claude.ai connector if "
+                "it was already set up")
+        elif args.setup and not reader_ready(remote):
+            set_reader_password(remote)
+            first_time = True
+            say("connector password set for the read-only role (not shown)")
+        elif args.setup:
+            say("read-only role already has its password — left alone, so the claude.ai connector "
+                "keeps working")
+        local = connect()
         sync_aliases(local, remote)  # before sessions, so relabelled projects go up in this run
         sent = push_messages(local, remote)
         push_sessions(local, remote)
         digests = push_digests(local, remote)
-    local.close()
-    if not args.quiet:
-        print(f"synced {sent} message(s), {digests} digest(s) in {time.monotonic() - started:.1f}s")
+        record_sync(remote)
+        local.close()
+    say(f"synced {sent} message(s), {digests} digest(s) in {time.monotonic() - started:.1f}s")
+    if args.setup:
+        say("next: `claude-brain cloud instructions` — add the connector and the project on claude.ai"
+            if first_time else "claude.ai needs nothing more: its connector reads this same database")
 
 
 if __name__ == "__main__":

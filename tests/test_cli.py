@@ -36,3 +36,27 @@ def test_bin_wrapper_runs(tmp_path):
     out = subprocess.run([sys.executable, str(REPO / "bin" / "claude-brain"), "projects"],
                          capture_output=True, text=True, env=env)
     assert out.returncode == 0, out.stderr
+
+
+def test_connection_string_is_found_in_what_neon_lets_you_copy():
+    from brain.cli import connection_string
+
+    url = "postgresql://owner:pw@ep-x.neon.tech/neondb?sslmode=require&channel_binding=require"
+    assert connection_string(url) == url
+    assert connection_string(f"  '{url}'\n") == url
+    assert connection_string(f"psql '{url}'") == url
+    assert connection_string("hunter2") is None
+
+
+def test_connect_refuses_without_a_terminal_and_writes_nothing(monkeypatch, tmp_path):
+    import io
+
+    import pytest
+
+    from brain import cli, sync
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("postgresql://u:p@h/db\n"))
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["cloud", "connect"])
+    assert "own terminal" in str(exc.value) and "cloud connect" in str(exc.value)
+    assert not sync.ENV_FILE.exists()

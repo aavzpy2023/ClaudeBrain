@@ -1,6 +1,9 @@
 """`claude-brain`: one entry point for every ClaudeBrain command."""
+import getpass
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -37,16 +40,52 @@ MCP server (optional, off by default; for Claude Desktop and other agents, needs
   mcp disable | status            remove it / show where it is on
   mcp snippet [--no-redact]       config to paste into any other MCP client
 
-Cloud (optional, needs NEON_URL in ~/.config/claude-brain/.env and uv):
-  cloud init                      create/upgrade the Neon schema and read-only role
-  cloud reader-password           give the read-only role the password the connector needs
+Cloud (optional: your own Neon Postgres, read from claude.ai; needs uv):
+  cloud connect                   save the Neon connection string (hidden prompt; your own terminal)
+  cloud setup                     schema + connector password (first computer only) + upload;
+                                  safe to re-run, and all a second computer needs
+  cloud status                    what the cloud holds: schema version, computers, last syncs
   cloud instructions              print the claude.ai connector + project setup (NEON_PROJECT_ID)
   cloud sync | sync               push now (the Stop hook does this after every reply)
+  cloud init                      re-apply the schema (repair; upgrades happen on their own)
+  cloud reader-password           rotate the connector's password (reconnect it on claude.ai)
 
 Run `claude-brain <command> --help` for a command's options."""
 
 QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias", "export"}
-CLOUD_FLAGS = {"sync": [], "init": ["--init"], "reader-password": ["--reader-password"]}
+CLOUD_FLAGS = {"sync": [], "setup": ["--setup"], "status": ["--status"], "init": ["--init"],
+               "reader-password": ["--reader-password"]}
+
+
+def _self_command() -> str:
+    """How to run this CLI from the user's own terminal, where the plugin's bin/ isn't on PATH.
+    Windows: PowerShell can't start a command with a quoted path, so rely on `python` instead."""
+    script = (Path(__file__).resolve().parent.parent / "bin" / "claude-brain").as_posix()
+    if os.name == "nt":
+        return f'python "{script}"'
+    return f"{shlex.quote(Path(sys.executable).as_posix())} {shlex.quote(script)}"
+
+
+SELF = _self_command()
+
+
+def connection_string(pasted: str) -> str | None:
+    """The postgresql:// URL inside whatever was pasted: bare, quoted, or Neon's `psql '…'` line."""
+    match = re.search(r"postgres(?:ql)?://[^\s'\"]+", pasted)
+    return match[0] if match else None
+
+
+def cloud_connect() -> None:
+    if not sys.stdin.isatty():
+        sys.exit("`cloud connect` asks for the connection string with hidden input, so run it in your "
+                 f"own terminal (never paste the string into a chat):\n  {SELF} cloud connect")
+    print("Neon console → your project → Connect: copy the connection string (owner role).")
+    url = connection_string(getpass.getpass("Connection string (input hidden): "))
+    if not url:
+        sys.exit("that isn't a postgresql:// connection string; nothing was saved")
+    project_id = input("Project id (Neon → Settings → General; Enter to skip): ").strip()
+    path = sync.write_env({"NEON_URL": url, **({"NEON_PROJECT_ID": project_id} if project_id else {})})
+    print(f"saved to {path}, readable only by you. Next: claude-brain cloud setup")
 
 
 def cloud(args: list[str]) -> None:
@@ -54,11 +93,17 @@ def cloud(args: list[str]) -> None:
     if action == "instructions":
         sync.main(["--claude-ai", *extra])
         return
+    if action == "connect":
+        cloud_connect()
+        return
     if action not in CLOUD_FLAGS:
-        sys.exit(f"unknown cloud action {action!r}: use init, reader-password, instructions or sync")
+        sys.exit(f"unknown cloud action {action!r}: use connect, setup, status, instructions, sync, "
+                 f"init or reader-password")
+    for problem in sync.env_problems():
+        print(f"warning: {problem}", file=sys.stderr)
     if not sync.neon_url():
-        sys.exit(f"cloud is off: put NEON_URL=postgresql://… (your Neon owner connection string) in "
-                 f"{sync.ENV_FILE}, chmod 600 — never paste it into a chat")
+        sys.exit(f"cloud is off: run `{SELF} cloud connect` in your own terminal (or put "
+                 f"NEON_URL=… in {sync.ENV_FILE}, chmod 600) — never paste the string into a chat")
     uv = sync.find_uv()
     if not uv:
         sys.exit("cloud needs uv to fetch the Postgres driver: https://docs.astral.sh/uv/")
@@ -98,15 +143,18 @@ def status() -> None:
     mcp_on = mcp_setup.SERVER_NAME in mcp_setup._load(mcp_setup.desktop_config_path()).get("mcpServers", {})
     print(f"mcp        {'on in Claude Desktop' if mcp_on else 'off (optional: claude-brain mcp enable)'}")
 
+    for problem in sync.env_problems():
+        print(f"cloud      ⚠ {problem}")
     if not sync.neon_url():
-        print("cloud      off (optional: /brain:cloud or `claude-brain cloud init`)")
+        print("cloud      off (optional: /brain:cloud or `claude-brain cloud connect`)")
         return
     synced = conn.execute("SELECT value FROM sync_state WHERE key = 'messages'").fetchone()
     newest = conn.execute("SELECT MAX(rowid) FROM messages").fetchone()[0] or 0
     pending = newest - (synced[0] if synced else 0)
     uv = sync.find_uv()
     print(f"cloud      on — {pending} message(s) pending upload; uv: {uv or 'MISSING, sync disabled'}; "
-          f"NEON_PROJECT_ID: {sync.env_value('NEON_PROJECT_ID') or 'unset (needed for `cloud instructions`)'}")
+          f"NEON_PROJECT_ID: {sync.env_value('NEON_PROJECT_ID') or 'unset (needed for `cloud instructions`)'}; "
+          f"details: claude-brain cloud status")
 
 
 def main(argv=None) -> None:

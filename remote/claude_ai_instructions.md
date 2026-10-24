@@ -6,9 +6,10 @@
 
 ## 1. Connector (one time)
 
-First give the read-only role a password — the connector logs in as it, and Neon supplies the
-password itself, you never type it: `claude-brain cloud reader-password`. Without it every
-query fails with "missing authentication credentials".
+`claude-brain cloud setup` has already given the read-only role a password — the connector
+logs in as it, and Neon supplies the password itself, you never type it. If every query fails
+with "missing authentication credentials", run `claude-brain cloud reader-password` and connect
+the connector again.
 
 Then Settings → Connectors → **Add custom connector**:
 

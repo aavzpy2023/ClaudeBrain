@@ -276,19 +276,29 @@ not yet tested on a real machine.
 Turn it on whenever you like; until then nothing leaves your machine. Easiest: run
 `/brain:cloud`. By hand:
 
-1. Create a free [Neon](https://neon.tech) project. Put its **owner** connection string and its
-   project id in `~/.config/claude-brain/.env`, then `chmod 600` it. Never commit it, never paste
-   it into a chat — conversations get archived.
+1. Create a free [Neon](https://neon.tech) project.
+2. In **your own terminal** (never in a chat — conversations get archived):
    ```bash
-   NEON_URL=postgresql://…            # Neon → Connect
-   NEON_PROJECT_ID=…                  # Neon → Settings → General
+   claude-brain cloud connect     # hidden prompt for the connection string + the project id
    ```
-2. `claude-brain cloud init` — tables, search functions and the read-only role `brain_reader`;
-   uploads everything archived so far. From now on the hook pushes after every reply.
-3. `claude-brain cloud reader-password` — the connector logs in as `brain_reader`.
+   It saves them in `~/.config/claude-brain/.env`, readable only by you. (Plugin installs: the
+   command isn't on your shell's PATH — `/brain:cloud` prints the full line for your machine.)
+   Writing that file by hand works too: `NEON_URL=postgresql://…` (Neon → Connect, owner role)
+   and `NEON_PROJECT_ID=…` (Settings → General), then `chmod 600`.
+3. `claude-brain cloud setup` — tables, search functions and the read-only role `brain_reader`
+   with its connector password, then uploads everything archived so far. From now on the hook
+   pushes after every reply. Safe to re-run.
 4. `claude-brain cloud instructions` — prints the connector URL and the claude.ai "Brain"
    project instructions, filled in with your project id
    (template: [`remote/claude_ai_instructions.md`](remote/claude_ai_instructions.md)).
+
+`claude-brain cloud status` shows what the cloud holds: schema version, each computer's sessions
+and last sync.
+
+**Upgrades take care of themselves.** The cloud schema carries a version; when a newer
+ClaudeBrain syncs, it upgrades the schema first (one machine at a time, under a lock). It never
+goes backwards: a computer still on an older ClaudeBrain keeps uploading but leaves the schema
+alone, and `cloud status` there says to update it.
 
 What reaches the cloud is redacted first: API keys, GitHub/AWS/Google/Slack tokens, JWTs,
 private keys, passwords in URLs and `password=`/`token:`-style assignments become
@@ -323,7 +333,10 @@ you, from time to time
 
 ### 💻 Several computers
 
-Install the plugin on each machine and give every `.env` the **same** Neon database.
+Install the plugin on each machine, then run `claude-brain cloud connect` (same Neon
+project) and `claude-brain cloud setup` there. Setup sees the database is already set up: it
+leaves the connector's password alone — claude.ai keeps working, nothing to redo there — and
+just uploads that machine's history.
 Each computer keeps its own local `brain.db` (its own sessions) and pushes into the shared
 mirror, so claude.ai sees the union of all of them.
 
@@ -526,7 +539,7 @@ claude-brain import ~/Downloads             # import; only the export's zips are
 |---|---|---|
 | `CLAUDE_BRAIN_DB` | `~/.local/share/claude-brain/brain.db` | Database location |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code's folder: transcripts, settings, skills |
-| `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror |
+| `NEON_URL` (env or `~/.config/claude-brain/.env`) | — | Owner connection string; enables the cloud mirror (`claude-brain cloud connect` writes it) |
 | `ingest.py --root` | `~/.claude/projects` | Where transcripts are read from |
 | `claude-brain ingest --full` | off | Re-read every file from the start (safe: deduplicated) |
 | `~/.local/share/claude-brain/context` | absent (off) | Session briefing: number of sessions to list (`claude-brain context on [N]`) |
@@ -546,7 +559,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 88 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 96 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -614,8 +627,9 @@ Example — a computer with 5 projects:
 <details>
 <summary><b>What happens when I install it on another computer?</b></summary>
 
-Install the plugin there and put the same `NEON_URL` (and `NEON_PROJECT_ID`) in its `.env`.
-When you open your first session there, the hook:
+Install the plugin there, then `claude-brain cloud connect` (the same Neon project) and
+`claude-brain cloud setup` — or copy the `.env` over. When you open your first session there, the
+hook:
 
 1. archives every Claude Code session that computer still has, all projects, into its own
    local `brain.db`, and detects each session's git repo (the project folders must exist there;
@@ -624,8 +638,8 @@ When you open your first session there, the hook:
    `leai-cli/src` → `devleaicli`);
 3. uploads messages and sessions to Neon, already under the right project names;
 
-and from then on every reply there is archived and pushed. Run `claude-brain status` to watch
-it; `claude-brain sync` forces a push.
+and from then on every reply there is archived and pushed. `claude-brain cloud status` lists
+every computer and its last sync; `claude-brain sync` forces a push.
 
 In claude.ai, sessions from both computers then appear together under the same project. Keep in
 mind:
@@ -687,6 +701,17 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.14.0
+- **Simpler, safer cloud setup.** `claude-brain cloud connect` asks for the connection string
+  with hidden input in your own terminal and saves it privately; `claude-brain cloud setup` does
+  the rest and is all a second computer needs. It sets the connector's password only when
+  there is none, so re-running it (or setting up another machine) never breaks claude.ai.
+- **Self-upgrading cloud schema**, forward only: every sync upgrades an older schema under a
+  lock and leaves a newer one alone, so an outdated machine can't roll it back.
+- `claude-brain cloud status`: schema version, each computer's sessions and last sync.
+- `status` and `cloud` commands warn when the `.env` is readable by others or owned by another
+  user. `cloud reader-password` now only rotates, on request.
 
 ### 0.13.0
 - **Session briefing (opt-in):** `claude-brain context on [N]` starts every new session with

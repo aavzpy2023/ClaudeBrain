@@ -151,9 +151,9 @@ def main(argv=None) -> None:
     if not args.no_backfill:
         subprocess.run([sys.executable, str(REPO / "brain" / "ingest.py"), "--full"], check=True)
     if has_neon and uv:
-        subprocess.run(uv_command(uv, "--init"), check=True)
+        subprocess.run(uv_command(uv, "--setup"), check=True)
     else:
-        print("cloud sync → off for now (optional: NEON_URL in ~/.config/claude-brain/.env, then re-run)")
+        print("cloud sync → off for now (optional: `claude-brain cloud connect`, then `cloud setup`)")
     print("done. Open /hooks once (or restart Claude Code) so running sessions pick up the hooks.")
 
 

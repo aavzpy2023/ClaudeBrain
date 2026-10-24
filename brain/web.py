@@ -67,6 +67,8 @@ mark { background:var(--mark); color:inherit; padding:0 1px; }
 .switch a { padding:7px 12px; color:var(--muted); background:var(--card); }
 .switch a.on { background:var(--accent); color:#fff; font-weight:600; }
 .switch a:hover { text-decoration:none; }
+.sortbtn { display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
+.sortbtn:hover { text-decoration:none; border-color:var(--accent); }
 .cmd { font-family:ui-monospace, monospace; font-size:13px; background:var(--code); padding:6px 10px;
   border-radius:6px; display:inline-block; user-select:all; }
 :target { outline: 2px solid var(--accent); }
@@ -168,11 +170,13 @@ def project_page(src: Source, name: str) -> tuple[str, str]:
                   f"{_session_rows(rows, src)}")
 
 
-def session_page(src: Source, prefix: str) -> tuple[str, str]:
+def session_page(src: Source, prefix: str, order: str = "desc") -> tuple[str, str]:
+    order = "asc" if order == "asc" else "desc"
     sid = src.api.resolve_session(src.conn, prefix)
     s = src.row("SELECT * FROM sessions WHERE session_id = ?", (sid,))
+    direction = order.upper()
     msgs = src.rows("SELECT uuid, ts, role, text FROM messages WHERE session_id = ? AND is_sidechain = 0 "
-                    "ORDER BY ts DESC, uuid DESC", (sid,))  # newest first
+                    f"ORDER BY ts {direction}, uuid {direction}", (sid,))
     parts, tools = [], []
 
     def flush_tools():
@@ -202,7 +206,11 @@ def session_page(src: Source, prefix: str) -> tuple[str, str]:
     if s["entrypoint"] != "claude.ai":
         where = f" (on {e(s['host'] or '?')})" if "host" in keys and s["host"] != socket.gethostname() else ""
         head += f"<p class=meta>Resume it{where}: <span class=cmd>claude --resume {e(sid)}</span></p>"
-    return s["title"] or sid[:8], head + "".join(parts)
+    other = "asc" if order == "desc" else "desc"
+    sort = (f"<p><a class=sortbtn href='{link('/session', src.name, id=sid, order=other)}'>"
+            f"{'↓ Newest first' if order == 'desc' else '↑ Oldest first'} · switch to "
+            f"{'oldest' if order == 'desc' else 'newest'} first</a></p>")
+    return s["title"] or sid[:8], head + sort + "".join(parts)
 
 
 def search_page(src: Source, q: str) -> tuple[str, str]:
@@ -295,7 +303,7 @@ def make_handler(path: Path, cloud: bool):
                 elif url.path == "/project":
                     title, body = project_page(src, args.get("name", ""))
                 elif url.path == "/session":
-                    title, body = session_page(src, args.get("id", ""))
+                    title, body = session_page(src, args.get("id", ""), args.get("order", "desc"))
                 elif url.path == "/search":
                     title, body = search_page(src, q) if q else ("Your history", index_page(src))
                 else:

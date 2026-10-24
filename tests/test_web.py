@@ -48,6 +48,14 @@ def test_session_shows_newest_messages_first(db):
     assert page.index("and <code>a&lt;b</code>") < page.index("Decidimos usar GraphSAGE.") < page.index("regresión")
 
 
+def test_session_order_can_be_flipped(db):
+    asc = web.session_page(_local(db), SID, "asc")[1]
+    assert asc.index("regresión") < asc.index("Decidimos usar GraphSAGE.") < asc.index("and <code>a&lt;b</code>")
+    assert "order=desc" in asc and "Oldest first" in asc
+    desc = web.session_page(_local(db), SID)[1]
+    assert "order=asc" in desc and "Newest first" in desc
+
+
 def test_switch_marks_the_active_source_and_greys_out_a_missing_cloud():
     both = web.page("t", "", "cloud", cloud=True)
     assert "class='on' href='/?src=cloud'" in both and "href='/?src=local'" in both

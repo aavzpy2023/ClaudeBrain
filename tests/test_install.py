@@ -77,6 +77,7 @@ def test_install_skill_renders_template_and_replaces_symlink(tmp_path):
     assert "/py '/x y/bin/claude-brain' <command> [options]" in text
     assert "\nclaude-brain <command>" not in text
     assert "~/.local/share/claude-brain/brain.db" in text  # paths that merely contain the name stay
+    assert "CLAUDE_PLUGIN_ROOT" not in text  # plugin-only fallback dropped
     template = install.SKILL_TEMPLATE.read_text()
     assert "allowed-tools: Bash(claude-brain *)" in template  # the plugin's copy stays bare
 

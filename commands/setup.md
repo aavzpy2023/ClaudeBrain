@@ -3,6 +3,8 @@ description: Check ClaudeBrain and apply the recommended settings (transcript re
 allowed-tools: Bash(claude-brain *)
 ---
 
+If `claude-brain` is not found (the plugin was installed during this session, before its folder joined the PATH), run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-brain"` instead — same arguments.
+
 Check the user's ClaudeBrain install and offer the recommended settings.
 
 1. Run `claude-brain status` and summarize it in a few lines: what is archived, from which

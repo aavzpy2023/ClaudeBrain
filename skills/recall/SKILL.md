@@ -15,6 +15,7 @@ claude-brain <command> [options]
 ```
 
 In the table, `B` stands for that command. `claude-brain status` shows what is archived.
+If `claude-brain` is not found (the plugin was installed during this session, before its folder joined the PATH), run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-brain"` instead — same arguments.
 
 A session's project is its git repo (by remote, so clones and subfolders match) or else its
 folder name, normalized (lowercase, no accents/symbols, leading year dropped): `2026-ML vs GNN`

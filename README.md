@@ -204,6 +204,7 @@ erDiagram
 <sub>On Claude Code older than 2.1.275: `/plugin marketplace add aavzpy2023/ClaudeBrain`, then
 `/plugin install brain@aavzpy2023`.</sub>
 
+Then **restart Claude Code** (hooks and the `claude-brain` command load when a session starts).
 That's it — **everything runs locally**:
 
 - Archiving starts with Claude's next reply, in every project. The first run backfills the
@@ -586,6 +587,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.8.2
+- First real plugin install: right after installing, the plugin's `bin/` isn't on the PATH until
+  the session restarts. The skill and commands now fall back to
+  `${CLAUDE_PLUGIN_ROOT}/bin/claude-brain`; the README says to restart after installing.
 
 ### 0.8.1
 - New positioning: *your entire Claude history — every device, every word, one place*. README

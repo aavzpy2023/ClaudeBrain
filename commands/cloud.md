@@ -3,6 +3,8 @@ description: Optional — mirror the brain to your own Neon Postgres and query i
 allowed-tools: Bash(claude-brain *)
 ---
 
+If `claude-brain` is not found (the plugin was installed during this session, before its folder joined the PATH), run `"${CLAUDE_PLUGIN_ROOT}/bin/claude-brain"` instead — same arguments.
+
 Guide the user through ClaudeBrain's optional cloud mirror, one step at a time, confirming each
 step worked before the next.
 

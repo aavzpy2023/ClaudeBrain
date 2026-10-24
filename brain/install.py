@@ -82,7 +82,9 @@ def remove_ours(settings: dict) -> dict:
 
 def render_skill(query_cmd: str) -> str:
     """The plugin's skill with its bare `claude-brain` command replaced by this machine's path."""
-    text = SKILL_TEMPLATE.read_text()
+    # Lines about ${CLAUDE_PLUGIN_ROOT} only make sense inside the plugin: drop them.
+    text = "".join(l for l in SKILL_TEMPLATE.read_text().splitlines(keepends=True)
+                   if "${CLAUDE_PLUGIN_ROOT}" not in l)
     for old, new in ((f"Bash({PLUGIN_COMMAND} *)", f"Bash({query_cmd} *)"),
                      (f"{PLUGIN_COMMAND} <command>", f"{query_cmd} <command>"),
                      (f"`{PLUGIN_COMMAND} status`", f"`{query_cmd} status`")):

@@ -36,7 +36,8 @@ Archive:
   ingest [--full]                 archive new Claude Code transcripts (the hooks do this)
   import <export> [--inspect]     import a claude.ai data export (zip, folder or json)
   status                          what is archived, pending sync, retention, cloud setup
-  browse [--port N]               explore it in your browser (Datasette via uv; your own terminal)
+  web [--port N] [--no-open]      read your conversations in the browser (stdlib; your own terminal)
+  browse [--port N]               explore the tables in Datasette (via uv; your own terminal)
 
 Session continuity (optional, off by default):
   context on [N] | off            briefing of your latest N (default 3) sessions there, handoff
@@ -215,6 +216,10 @@ def main(argv=None) -> None:
         status()
     elif command == "browse":
         browse(rest)
+    elif command == "web":
+        from brain import web
+
+        web.main(rest)
     elif command == "forget":
         from brain import forget
 

@@ -103,6 +103,11 @@ sessions can recall and report on past work. Stdlib-only Python so the hook need
   (threshold `context-warn`, default 120k, then every 40k); bands per session in
   `context-bands.json`, so a compaction re-arms it.
   Files: `brain/context.py::hook_output`, `brain/context.py::handoff`, `brain/context.py::stop_output`, `brain/context.py::context_tokens`, `brain/ingest.py::ingest`, `brain/db.py::project_of_cwd`, `hooks/hooks.json`, `brain/install.py::commands`
+- **`web` is a stdlib, local, read-only viewer.** `ThreadingHTTPServer` on 127.0.0.1 only, a
+  fresh `mode=ro` URI connection per request, Host header must be localhost (DNS rebinding),
+  CSP `default-src 'none'`, every archived string through `html.escape` (`e`) before `render_text`
+  adds code fences/inline code. Local archive only (no Neon). Refuses without a TTY, like `browse`.
+  Files: `brain/web.py::make_handler`, `brain/web.py::session_page`, `brain/web.py::render_text`, `brain/web.py::allowed_host`, `brain/cli.py::main`
 - **`blame` matches files by repo-relative path, anchored to the session's folder.** `blame.py`
   runs over any read API (primitives `file_mentions` / `sessions_meta` / `user_prompts` in
   `query.py` and `remote.py`): candidates by substring (`instr`/`strpos`, both separator

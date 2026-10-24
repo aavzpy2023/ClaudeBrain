@@ -101,7 +101,7 @@ record.
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
 | 🧹 **Forget, for real** | `claude-brain forget session <id>`, `project <name>` or `text "<leaked string>"` removes them here and in the cloud, on every computer — a dry run until `--yes`; forgotten sessions never come back. |
-| 🌐 **Browse it in your browser** | `claude-brain browse` opens the archive in [Datasette](https://datasette.io): facets by project and source, full-text search, canned queries (search, read a session, projects). Local, read-only, nothing to install beyond uv. |
+| 🌐 **Read it in your browser** | `claude-brain web`: projects, sessions and search, each conversation as a chat — standard library only, this computer only, read-only. `claude-brain browse` opens the tables in [Datasette](https://datasette.io) for facets and SQL. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -448,13 +448,21 @@ $ claude-brain stats
 (Sample numbers.) `--project P` for one project, `--since DATE` for a period. `/brain:setup` shows it right after
 installing — the first time you see your whole history in one place.
 
-### Browse it in your browser (`browse`)
+### Read it in your browser (`web`, `browse`)
 
 ```bash
-claude-brain browse          # in your own terminal; Ctrl+C to stop
+claude-brain web             # read your conversations; in your own terminal, Ctrl+C to stop
+claude-brain browse          # the raw tables in Datasette
 ```
 
-Opens your archive in [Datasette](https://datasette.io) at `http://127.0.0.1:8001`: sessions
+`web` opens `http://127.0.0.1:8765` with nothing to install (Python's standard library): your
+latest sessions and projects, every conversation as a chat — tool calls folded away, code
+formatted, a link on every message's time — the exact `claude --resume` command, and search
+across everything with the hits highlighted. A 2,700-message session opens in under 0.1 s.
+It answers this computer only, opens the database read-only, escapes every archived character
+and refuses requests from other sites (DNS rebinding). `--port N`, `--no-open`.
+
+`browse` opens your archive in [Datasette](https://datasette.io) at `http://127.0.0.1:8001`: sessions
 faceted by project and source, messages with a full-text search box, and canned queries —
 *Search the conversation*, *Read a session*, *Projects*, *A project's sessions* — plus any SQL
 you like (`SELECT` only: Datasette opens it read-only). It runs on this machine only and comes
@@ -658,7 +666,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 119 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 124 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -681,6 +689,7 @@ brain/
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
   forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
+  web.py       claude-brain web: local read-only conversation viewer (stdlib http.server)
   datasette.json  `claude-brain browse`: hidden tables, facets, full-text search, canned queries
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
@@ -820,6 +829,7 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Demo GIF (CLI, including `blame`) and a social preview image
 - [ ] A GIF of asking Claude in a real session
 - [x] `blame` (why a file changed), `stats`, `forget`, `browse` (Datasette)
+- [x] `web`: read conversations in the browser, no dependencies
 - [x] Handoff card after `/clear`, transcript pointer after a compaction, context-size heads-up
 - [ ] Session briefing: also the digest's open items, when one exists
 - [x] Several computers feeding one cloud mirror
@@ -828,6 +838,12 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.20.0
+- **`claude-brain web`**: read your conversations in the browser — latest sessions, projects,
+  each session as a chat (tool calls folded, code formatted, resume command), search with
+  highlighted hits. Standard library only, 127.0.0.1 only, read-only, everything escaped,
+  other sites' requests refused.
 
 ### 0.19.0
 - **Session continuity** (part of `claude-brain context on`): after `/clear`, the new session

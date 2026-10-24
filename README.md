@@ -588,6 +588,10 @@ repo (same remote) or the same aliased folder end up under one project name.
 
 ## 📜 Changelog
 
+### 0.8.3
+- `/brain:setup` ends with a restart notice when the plugin was installed in the current session
+  (hooks and `claude-brain` only load when a session starts).
+
 ### 0.8.2
 - First real plugin install: right after installing, the plugin's `bin/` isn't on the PATH until
   the session restarts. The skill and commands now fall back to

@@ -21,5 +21,14 @@ Apply only what the user accepts, by editing `~/.claude/settings.json` (or
 `$CLAUDE_CONFIG_DIR/settings.json`): read it first and merge — never drop or reorder other keys.
 If the edit is refused, show the exact JSON to add so the user can do it.
 
-Finish by mentioning, in one line, the optional cloud mirror: `/brain:cloud` lets them query
-their history from claude.ai on the web and phone.
+Then mention, in one line, the optional cloud mirror: `/brain:cloud` lets them query their
+history from claude.ai on the web and phone (skip this if status shows the cloud already on).
+
+**End with the restart notice when it applies.** If `claude-brain` was not on the PATH, or
+status showed 0 archived messages, the plugin was installed during this session and its hooks
+aren't running yet. Make it the very last line, on its own and bold:
+
+**⚠️ Restart Claude Code now (exit and reopen it): archiving starts with the first reply of the
+new session, and it will pick up your existing history automatically.**
+
+Write that notice in the user's language.

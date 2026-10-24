@@ -56,6 +56,14 @@ def test_session_order_can_be_flipped(db):
     assert "order=asc" in desc and "Newest first" in desc
 
 
+def test_tool_calls_show_one_argument_per_line_even_when_clipped():
+    out = web.render_tools(['[tool:Edit] {"file_path": "a.py", "old": "x<y"}\n[result] ok',
+                            '[tool:Bash] {"command": "ls\\necho hi", "note": "abc\\'''])
+    assert "<b>🔧 Edit</b>" in out and "file_path: a.py\nold: x&lt;y" in out and "↩ result" in out
+    assert "<b>🔧 Bash</b>" in out and "command: ls\necho hi\nnote: abc" in out
+    assert web.format_args("not json at all") == "not json at all"
+
+
 def test_switch_marks_the_active_source_and_greys_out_a_missing_cloud():
     both = web.page("t", "", "cloud", cloud=True)
     assert "class='on' href='/?src=cloud'" in both and "href='/?src=local'" in both

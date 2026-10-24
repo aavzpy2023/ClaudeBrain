@@ -7,6 +7,7 @@ computer's SQLite, standard library only) or "cloud" (Neon, live, every computer
 psycopg, so with the cloud configured the server re-runs itself through uv, like remote.py.
 """
 import html
+import json
 import re
 import socket
 import sqlite3
@@ -67,6 +68,8 @@ mark { background:var(--mark); color:inherit; padding:0 1px; }
 .switch a { padding:7px 12px; color:var(--muted); background:var(--card); }
 .switch a.on { background:var(--accent); color:#fff; font-weight:600; }
 .switch a:hover { text-decoration:none; }
+.toolcall { margin:6px 0; } .toolcall b { font-size:12px; }
+.toolcall pre { margin:2px 0 0; padding:8px; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
 .sortbtn { display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
 .sortbtn:hover { text-decoration:none; border-color:var(--accent); }
 .cmd { font-family:ui-monospace, monospace; font-size:13px; background:var(--code); padding:6px 10px;
@@ -111,6 +114,54 @@ def render_text(text: str) -> str:
         else:
             out.append(re.sub(r"`([^`\n]+)`", r"<code>\1</code>", e(part)))
     return "".join(out)
+
+
+TOOL_PART = re.compile(r"(?m)^(?=\[(?:tool:[^\]]+|result|error)\] )")
+TOOL_HEAD = re.compile(r"^\[(tool:([^\]]+)|result|error)\] ?(.*)\Z", re.S)
+
+
+ARG = re.compile(r'"([\w-]+)": ("(?:[^"\\]|\\.)*"?|[^,}]+)')
+
+
+def format_args(body: str) -> str:
+    """Tool arguments one per line, strings unescaped (a command's \\n become real line breaks).
+    They are clipped when archived, so a cut-off JSON is read leniently, key by key."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        pairs = list(data.items())
+    else:
+        pairs = []
+        for key, raw in ARG.findall(body):
+            for attempt in (raw, raw + '"', raw[:-1] + '"'):  # whole, string cut short, cut mid-escape
+                try:
+                    pairs.append((key, json.loads(attempt)))
+                    break
+                except ValueError:
+                    continue
+            else:
+                pairs.append((key, raw.strip('"')))
+    if not pairs:
+        return body
+    return "\n".join(f"{k}: {v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)}" for k, v in pairs)
+
+
+def render_tool_part(part: str) -> str:
+    """One recorded tool call or result: its name, then its arguments one per line."""
+    m = TOOL_HEAD.match(part.rstrip("\n"))
+    if not m:
+        return f"<pre>{e(part)}</pre>"
+    kind, name, body = m.group(1), m.group(2), m.group(3)
+    if name:
+        return f"<div class=toolcall><b>🔧 {e(name)}</b><pre>{e(format_args(body))}</pre></div>"
+    label = "⚠️ error" if kind == "error" else "↩ result"
+    return f"<div class=toolcall><b>{label}</b><pre>{e(body)}</pre></div>"
+
+
+def render_tools(texts: list[str]) -> str:
+    return "".join(render_tool_part(part) for text in texts for part in TOOL_PART.split(text) if part.strip())
 
 
 def link(path: str, src: str, **params) -> str:
@@ -183,7 +234,7 @@ def session_page(src: Source, prefix: str, order: str = "desc") -> tuple[str, st
         if tools:
             calls = sum(line.startswith("[tool:") for t in tools for line in t.splitlines())
             parts.append(f"<details class=tool><summary>🔧 {calls} tool call(s)</summary>"
-                         f"<div class=body>{e(chr(10).join(tools))}</div></details>")
+                         f"<div class=tools>{render_tools(tools)}</div></details>")
             tools.clear()
 
     for m in msgs:

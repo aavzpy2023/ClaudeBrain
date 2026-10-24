@@ -36,15 +36,15 @@ def resolve_session(conn, prefix: str) -> str:
 
 
 def search(conn, q, project=None, source=None, since=None, limit=20, sidechain=False, raw=False,
-           roles=DEFAULT_ROLES) -> list[dict]:
+           roles=DEFAULT_ROLES, marks=("[", "]")) -> list[dict]:
     # brain_tsquery parses the same syntax as the local fts_query; `raw` (FTS5 syntax) has no
     # Postgres equivalent and is treated as plain search syntax.
-    sql = """SELECT m.session_id, m.ts, m.role, m.entrypoint, s.project, s.title, s.host,
+    sql = """SELECT m.uuid, m.session_id, m.ts, m.role, m.entrypoint, s.project, s.title, s.host,
                     ts_headline('simple', brain_unaccent(m.text), q.tq,
-                                'StartSel=[, StopSel=], MaxWords=24, MinWords=8, MaxFragments=1') AS snippet
+                                'StartSel=' || %s || ', StopSel=' || %s || ', MaxWords=24, MinWords=8, MaxFragments=1') AS snippet
              FROM messages m JOIN sessions s USING (session_id), (SELECT brain_tsquery(%s) AS tq) q
              WHERE m.tsv @@ q.tq AND m.role = ANY(%s)"""
-    params: list = [q, list(roles)]
+    params: list = [marks[0], marks[1], q, list(roles)]
     if project:
         sql += " AND s.project = %s"
         params.append(resolve_project(conn, project))

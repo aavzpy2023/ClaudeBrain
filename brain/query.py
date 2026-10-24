@@ -96,10 +96,11 @@ def search(
     sidechain: bool = False,
     raw: bool = False,
     roles: tuple[str, ...] = DEFAULT_ROLES,
+    marks: tuple[str, str] = ("[", "]"),
 ) -> list[dict]:
     sql = """
-        SELECT m.session_id, m.ts, m.role, m.entrypoint, s.project, s.title,
-               snippet(messages_fts, 0, '[', ']', '…', 24) AS snippet
+        SELECT m.uuid, m.session_id, m.ts, m.role, m.entrypoint, s.project, s.title,
+               snippet(messages_fts, 0, ?, ?, '…', 24) AS snippet
         FROM messages_fts
         JOIN messages m ON m.rowid = messages_fts.rowid
         JOIN sessions s ON s.session_id = m.session_id
@@ -107,7 +108,7 @@ def search(
     match = q if raw else fts_query(q)
     if not match:
         return []
-    params: list = [match, *roles]
+    params: list = [*marks, match, *roles]
     if project:
         sql += " AND s.project = ?"
         params.append(resolve_project(conn, project))

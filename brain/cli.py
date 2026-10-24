@@ -36,7 +36,7 @@ Archive:
   ingest [--full]                 archive new Claude Code transcripts (the hooks do this)
   import <export> [--inspect]     import a claude.ai data export (zip, folder or json)
   status                          what is archived, pending sync, retention, cloud setup
-  web [--port N] [--no-open]      read your conversations in the browser (stdlib; your own terminal)
+  web [--port N] [--no-open] [--no-cloud]  read conversations in the browser, Cloud/Local switch (your terminal)
   browse [--port N]               explore the tables in Datasette (via uv; your own terminal)
 
 Session continuity (optional, off by default):

@@ -101,7 +101,7 @@ record.
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
 | 🧹 **Forget, for real** | `claude-brain forget session <id>`, `project <name>` or `text "<leaked string>"` removes them here and in the cloud, on every computer — a dry run until `--yes`; forgotten sessions never come back. |
-| 🌐 **Read it in your browser** | `claude-brain web`: projects, sessions and search, each conversation as a chat — standard library only, this computer only, read-only. `claude-brain browse` opens the tables in [Datasette](https://datasette.io) for facets and SQL. |
+| 🌐 **Read it in your browser** | `claude-brain web`: projects, sessions and search, each conversation as a chat, with a ☁️ Cloud / 💻 Local switch (Cloud = every computer, live from Neon) — read-only, served to this computer only. `claude-brain browse` opens the tables in [Datasette](https://datasette.io) for facets and SQL. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
@@ -455,10 +455,15 @@ claude-brain web             # read your conversations; in your own terminal, Ct
 claude-brain browse          # the raw tables in Datasette
 ```
 
-`web` opens `http://127.0.0.1:8765` with nothing to install (Python's standard library): your
+`web` opens `http://127.0.0.1:8765`. With the cloud on, a **☁️ Cloud | 💻 Local** switch in the
+header chooses the source: Cloud reads Neon live — every computer's sessions, the moment they
+sync, labelled `@host` — and Local reads this machine's archive (instant, works offline). Cloud
+is the default when configured, and it runs through uv like the other cloud commands; without
+the cloud nothing extra is needed (Python's standard library). It shows your
 latest sessions and projects, every conversation as a chat — tool calls folded away, code
 formatted, a link on every message's time — the exact `claude --resume` command, and search
-across everything with the hits highlighted. A 2,700-message session opens in under 0.1 s.
+across everything with the hits highlighted. Local pages open in milliseconds; Cloud ones in
+about a second or two (a new connection to Neon per page). `--no-cloud` forces local.
 It answers this computer only, opens the database read-only, escapes every archived character
 and refuses requests from other sites (DNS rebinding). `--port N`, `--no-open`.
 
@@ -666,7 +671,7 @@ file mid-write. Back it up there instead.
 ## 🧪 Development
 
 ```bash
-uv run pytest                      # 124 tests, in-memory fixtures, < 1 s
+uv run pytest                      # 126 tests, in-memory fixtures, < 1 s
 claude plugin validate .           # plugin + marketplace manifests
 claude --plugin-dir .              # try the plugin from a checkout, without installing it
 ```
@@ -689,7 +694,7 @@ brain/
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
   forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
-  web.py       claude-brain web: local read-only conversation viewer (stdlib http.server)
+  web.py       claude-brain web: read-only conversation viewer, Cloud/Local switch (stdlib http.server)
   datasette.json  `claude-brain browse`: hidden tables, facets, full-text search, canned queries
   remote.py    the read commands against Neon (all devices), run through uv
   export.py    Markdown/Obsidian export over any read API
@@ -829,7 +834,7 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Demo GIF (CLI, including `blame`) and a social preview image
 - [ ] A GIF of asking Claude in a real session
 - [x] `blame` (why a file changed), `stats`, `forget`, `browse` (Datasette)
-- [x] `web`: read conversations in the browser, no dependencies
+- [x] `web`: read conversations in the browser, live from Neon or local, one switch
 - [x] Handoff card after `/clear`, transcript pointer after a compaction, context-size heads-up
 - [ ] Session briefing: also the digest's open items, when one exists
 - [x] Several computers feeding one cloud mirror
@@ -838,6 +843,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.21.0
+- **`claude-brain web` reads Neon live**: a ☁️ Cloud / 💻 Local switch in the header. Cloud shows
+  every computer's sessions the moment they sync (labelled `@host`); Local is instant and offline.
+  An unreachable cloud offers the local archive. Search hits link to the exact message.
 
 ### 0.20.0
 - **`claude-brain web`**: read your conversations in the browser — latest sessions, projects,

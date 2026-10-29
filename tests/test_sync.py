@@ -265,3 +265,103 @@ def test_connect_awake_gives_up_after_the_last_attempt(monkeypatch):
     with pytest.raises(fake.OperationalError):
         connect_awake("postgresql://u:p@h/db", attempts=2, pause=0, log=io.StringIO())
     assert fake.calls == 2
+
+
+def _seed_project(conn, root):
+    from conftest import SID, session_records, write_jsonl
+    from brain.ingest import ingest
+    write_jsonl(root / "p" / f"{SID}.jsonl", session_records())
+    ingest(conn, root)  # gives save_digest a project ("mlvsgnn") to resolve
+
+
+class DigestNeon:
+    """Just enough of Neon's digests table: push appends, pull filters like the real query."""
+
+    def __init__(self, rows=()):
+        self.rows = list(rows)  # (origin, scope, key, covers_until_ts, content, created_at)
+        self.out = []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def commit(self):
+        pass
+
+    def executemany(self, query, params):
+        self.rows.extend((o, s, k, c, t, ts) for o, s, k, c, t, ts in params)
+
+    def execute(self, query, params):
+        host, since = params
+        self.out = [(o, k, c, t, ts) for o, s, k, c, t, ts in sorted(self.rows, key=lambda r: r[5])
+                    if s == "project" and not o.startswith(host) and ts > since]
+
+    def fetchall(self):
+        return self.out
+
+
+def test_digests_from_other_computers_come_down_once_and_win_by_date(conn, root):
+    _seed_project(conn, root)
+    import socket
+    from brain.query import latest_digest, save_digest
+    from brain.sync import pull_digests
+
+    me = socket.gethostname()
+    save_digest(conn, "project", "mlvsgnn", "mine, older", covers_until_ts="2026-10-01T00:00:00Z")
+    conn.execute("UPDATE digests SET created_at = '2026-10-01T10:00:00.000Z'")
+    neon = DigestNeon([
+        ("laptop:7", "project", "mlvsgnn", "2026-10-02T00:00:00Z", "from the laptop, newer", "2026-10-02T10:00:00.000Z"),
+        (f"{me}:1", "project", "mlvsgnn", None, "my own, already here", "2026-10-03T10:00:00.000Z"),
+        ("laptop:8", "session", "abc", None, "session digests stay in the cloud", "2026-10-04T10:00:00.000Z"),
+    ])
+    assert pull_digests(conn, neon) == 1
+    assert pull_digests(conn, neon) == 0  # idempotent
+    got = latest_digest(conn, "project", "mlvsgnn")
+    assert got["content"] == "from the laptop, newer" and got["origin"] == "laptop:7"
+    assert got["created_at"] == "2026-10-02T10:00:00.000Z"  # original date kept: a later local id doesn't win
+
+
+def test_a_pulled_older_digest_does_not_displace_a_newer_local_one(conn, root):
+    _seed_project(conn, root)
+    from brain.query import latest_digest, save_digest
+    from brain.sync import pull_digests
+
+    save_digest(conn, "project", "mlvsgnn", "mine, newer")
+    neon = DigestNeon([("laptop:1", "project", "mlvsgnn", None, "laptop, older", "2020-01-01T00:00:00.000Z")])
+    pull_digests(conn, neon)
+    assert latest_digest(conn, "project", "mlvsgnn")["content"] == "mine, newer"
+
+
+def test_pulled_digests_are_not_pushed_back(conn, root):
+    _seed_project(conn, root)
+    from brain.query import save_digest
+    from brain.sync import pull_digests, push_digests
+
+    save_digest(conn, "project", "mlvsgnn", "written here")
+    neon = DigestNeon([("laptop:1", "project", "mlvsgnn", None, "from the laptop", "2026-10-02T10:00:00.000Z")])
+    pull_digests(conn, neon)
+    assert push_digests(conn, neon) == 1
+    pushed = [r for r in neon.rows if r[0].split(":")[0] != "laptop"]
+    assert len(pushed) == 1 and pushed[0][4] == "written here"
+    assert push_digests(conn, neon) == 0
+
+
+def test_database_from_before_origin_gets_the_column(tmp_path):
+    import sqlite3
+    from brain.db import connect
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE digests (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, "
+                "key TEXT NOT NULL, covers_until_ts TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL)")
+    old.execute("INSERT INTO digests(scope, key, content, created_at) VALUES ('project', 'p', 'old', 'x')")
+    old.commit()
+    old.close()
+    conn = connect(path)
+    assert conn.execute("SELECT origin FROM digests").fetchone()[0] is None
+    conn.close()

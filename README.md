@@ -66,7 +66,7 @@ to resume.**
 
 The popular memory tools for AI agents compress each session with a model when it's saved and
 keep the summary or the extracted facts. ClaudeBrain keeps **what actually happened**, from every
-device, and lets Claude distill it only when you ask — then caches that digest.
+device, and distills it into a digest that keeps itself current — on every computer.
 
 | Capability | AI-memory tools (claude-mem, memsearch, basic-memory, …) | **ClaudeBrain** |
 |---|---|---|
@@ -349,7 +349,8 @@ Each computer keeps its own local `brain.db` (its own sessions) and pushes into 
 mirror, so claude.ai sees the union of all of them.
 
 - No collisions: messages and sessions use Claude Code's global UUIDs; digests are keyed by
-  `<hostname>:<local id>`.
+  `<hostname>:<local id>`, and each sync pulls the other machines' project digests down, so the
+  newest one (by date) opens your next session wherever you are.
 - On a new machine, the first session after installing backfills that machine's existing
   transcripts (whatever Claude Code hasn't deleted yet) and uploads them.
 - **The same project adds up across machines.** A session's project is decided, most specific
@@ -847,6 +848,11 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.23.0
+- **Digests sync between computers, like conversations**: each sync also pulls the project digests
+  written on your other machines, so a new session anywhere opens with the newest one, and the next
+  automatic refresh builds on it instead of on a stale local copy. Newest wins by date.
 
 ### 0.22.0
 - **Self-updating project digests**: after real work (an edit, a write, a `git commit`, or a long

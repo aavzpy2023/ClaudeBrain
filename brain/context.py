@@ -89,7 +89,7 @@ def briefing(conn, cwd: str, count: int, exclude: str | None = None) -> str | No
     ).fetchall()
     digest = conn.execute(
         "SELECT content, covers_until_ts FROM digests WHERE scope = 'project' AND key = ? "
-        "ORDER BY id DESC LIMIT 1", (project,)).fetchone()
+        "ORDER BY created_at DESC, id DESC LIMIT 1", (project,)).fetchone()
     if not rows and not digest:
         return None
     lines = []

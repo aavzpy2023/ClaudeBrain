@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS digests (
     key             TEXT NOT NULL,
     covers_until_ts TEXT,
     content         TEXT NOT NULL,
-    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    origin          TEXT  -- NULL: written on this computer; else '<host>:<id>' of the digest pulled from Neon
 );
 CREATE INDEX IF NOT EXISTS digests_key ON digests(scope, key, id);
 
@@ -119,8 +120,16 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=30000")
     _migrate_repo_columns(conn)
     conn.executescript(SCHEMA)
+    _migrate_digest_origin(conn)
     _migrate_path_aliases(conn)
     return conn
+
+
+def _migrate_digest_origin(conn: sqlite3.Connection) -> None:
+    # Databases from ≤0.22 have digests without origin (pulled-from-Neon marker).
+    if "origin" not in {r[1] for r in conn.execute("PRAGMA table_info(digests)")}:
+        conn.execute("ALTER TABLE digests ADD COLUMN origin TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS digests_origin ON digests(origin) WHERE origin IS NOT NULL")
 
 
 def _migrate_repo_columns(conn: sqlite3.Connection) -> None:

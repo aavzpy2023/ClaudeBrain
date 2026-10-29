@@ -262,7 +262,7 @@ def projects(conn: sqlite3.Connection) -> list[dict]:
 
 def latest_digest(conn: sqlite3.Connection, scope: str, key: str) -> dict | None:
     row = conn.execute(
-        "SELECT * FROM digests WHERE scope = ? AND key = ? ORDER BY id DESC LIMIT 1", (scope, key)
+        "SELECT * FROM digests WHERE scope = ? AND key = ? ORDER BY created_at DESC, id DESC LIMIT 1", (scope, key)
     ).fetchone()
     return dict(row) if row else None
 

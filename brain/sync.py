@@ -376,7 +376,8 @@ def push_digests(local: sqlite3.Connection, remote) -> int:
     host = socket.gethostname()
     last = _watermark(local, "digests")
     rows = local.execute(
-        "SELECT id, scope, key, covers_until_ts, content, created_at FROM digests WHERE id > ? ORDER BY id",
+        "SELECT id, scope, key, covers_until_ts, content, created_at FROM digests "
+        "WHERE id > ? AND origin IS NULL ORDER BY id",  # pulled digests must not go back up
         (last,),
     ).fetchall()
     if rows:
@@ -397,6 +398,28 @@ def merge_aliases(local: dict, remote: dict) -> tuple[dict, dict]:
     to_local = {f: v for f, v in remote.items() if f not in local or v[1] > local[f][1]}
     to_remote = {f: v for f, v in local.items() if f not in remote or v[1] > remote[f][1]}
     return to_local, to_remote
+
+
+def pull_digests(local: sqlite3.Connection, remote) -> int:
+    """Bring other computers' project digests down, so every machine opens a session with the newest one.
+    Their original created_at is kept (readers order by it, not by local id)."""
+    since = local.execute("SELECT MAX(created_at) FROM digests WHERE origin IS NOT NULL").fetchone()[0] or ""
+    with remote.cursor() as cur:
+        cur.execute(
+            """SELECT origin, key, covers_until_ts, content, created_at FROM digests
+               WHERE scope = 'project' AND origin IS NOT NULL AND NOT starts_with(origin, %s)
+               AND created_at > %s ORDER BY created_at""",
+            (f"{socket.gethostname()}:", since),
+        )
+        rows = cur.fetchall()
+    for origin, key, covers, content, created in rows:
+        local.execute(
+            """INSERT OR IGNORE INTO digests(scope, key, covers_until_ts, content, created_at, origin)
+               VALUES ('project', ?, ?, ?, ?, ?)""",
+            (key, covers, content, created, origin),
+        )
+    local.commit()
+    return len(rows)
 
 
 def sync_aliases(local: sqlite3.Connection, remote) -> int:
@@ -502,9 +525,10 @@ def main(argv=None) -> None:
         sent = push_messages(local, remote)
         push_sessions(local, remote)
         digests = push_digests(local, remote)
+        pulled = pull_digests(local, remote)
         record_sync(remote)
         local.close()
-    say(f"synced {sent} message(s), {digests} digest(s) in {time.monotonic() - started:.1f}s")
+    say(f"synced {sent} message(s), {digests} digest(s) up, {pulled} down in {time.monotonic() - started:.1f}s")
     if args.setup:
         say("next: `claude-brain cloud instructions` — add the connector and the project on claude.ai"
             if first_time else "claude.ai needs nothing more: its connector reads this same database")

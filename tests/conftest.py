@@ -61,6 +61,7 @@ def no_real_cloud(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("CLAUDE_BRAIN_DB", str(tmp_path_factory.mktemp("state") / "brain.db"))
     monkeypatch.delenv("NEON_URL", raising=False)
     monkeypatch.delenv("NEON_PROJECT_ID", raising=False)
+    monkeypatch.setenv("CLAUDE_BRAIN_AUTODIGEST", "1")  # the hook must never spawn a real `claude -p` in tests
     monkeypatch.setattr("brain.sync.ENV_FILE", tmp_path_factory.mktemp("cfg") / "missing.env")
 
 

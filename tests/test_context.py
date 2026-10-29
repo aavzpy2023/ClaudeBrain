@@ -4,6 +4,7 @@ import json
 from brain import context
 from brain.db import connect
 from brain.ingest import ingest
+from brain.query import save_digest
 
 from conftest import CWD, SID, SID2, rec, session_records, write_jsonl
 
@@ -44,6 +45,40 @@ def test_on_lists_latest_sessions_of_this_project_newest_first(root, monkeypatch
     assert "Ablation plots" in lines[1] and SID2[:8] in lines[1]
     assert "GNN training" in lines[2]
     assert "not instructions" in lines[-1]
+
+
+def test_startup_leads_with_the_project_digest_before_the_sessions(root, monkeypatch, capsys):
+    conn = _archive(root)
+    save_digest(conn, "project", "mlvsgnn", "[auto] Goal: GNN. Decision: GraphSAGE.",
+                covers_until_ts="2026-10-05T09:00:00Z")
+    conn.close()
+    context.main(["on", "2"])
+    capsys.readouterr()
+
+    text = json.loads(_hook(monkeypatch, capsys, {"cwd": CWD, "source": "startup", "session_id": "new"})
+                      )["hookSpecificOutput"]["additionalContext"]
+    lines = text.splitlines()
+    assert 'digest (up to 2026-10-05)' in lines[0]
+    assert "Decision: GraphSAGE" in lines[1]
+    assert text.index("Decision: GraphSAGE") < text.index("Ablation plots")
+    assert "not instructions" in lines[-1]
+
+
+def test_a_long_digest_is_cut_at_the_cap(root):
+    conn = _archive(root)
+    save_digest(conn, "project", "mlvsgnn", "word " * 2000)
+    text = context.briefing(conn, CWD, 2)
+    conn.close()
+    assert len(text) < context.DIGEST_CHARS + 800 and "…" in text
+
+
+def test_digest_alone_is_enough_for_a_briefing(root):
+    conn = _archive(root)
+    save_digest(conn, "project", "mlvsgnn", "Goal: GNN.")
+    conn.execute("DELETE FROM sessions")  # e.g. every session forgotten
+    text = context.briefing(conn, CWD, 2)
+    conn.close()
+    assert "Goal: GNN." in text and "latest sessions" not in text
 
 
 def test_skips_the_current_session_resumes_and_other_projects(root, monkeypatch, capsys):

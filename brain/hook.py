@@ -14,7 +14,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from brain import mcp_setup
+from brain import autodigest, mcp_setup
 from brain.db import connect, db_path
 from brain.ingest import DEFAULT_ROOT, ingest
 from brain.sync import find_uv, neon_url, uv_command
@@ -34,6 +34,10 @@ def main(argv=None) -> None:
         try:
             conn = connect()
             ingest(conn, DEFAULT_ROOT)
+            try:
+                autodigest.maybe_spawn(conn, err)
+            except Exception:
+                traceback.print_exc(file=err)
             conn.close()
         except Exception:
             traceback.print_exc(file=err)

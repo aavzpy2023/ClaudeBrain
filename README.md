@@ -106,11 +106,11 @@ record.
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
 | 🪟 **Linux, macOS, Windows** | Hooks run Python directly (no shell syntax), paths are handled in both styles. |
 | ♻️ **Resumable** | Finds the session and hands you the exact `claude --resume` command — or continues from the archive if the original transcript is gone. |
-| 📝 **Lazy digests** | When Claude summarizes a project for you, it caches the summary; the next report only reads what happened since. Zero cost up front. |
+| 📝 **Self-updating digests** | A project's digest (goal, decisions and why, state, files, open issues) is refreshed in the background by `claude -p` — on your Claude subscription, no API key — once there is real work since the last one: an edit, a write or a `git commit` (or a long discussion), at most every 3 hours. It only reads what is new, so it stays cheap; `[auto]` marks it, and a hand-written one stays in the history. Set `CLAUDE_BRAIN_AUTODIGEST=1` to switch it off. |
 | 🪶 **Tiny & dependency-free** | Pure Python stdlib. 1.5 GB of raw transcripts → **18 MB** database, full backfill in **7 s**. |
 | ☁️ **Ask from your phone** | Optional mirror to Neon Postgres, queried from claude.ai (web, mobile, Desktop chat) through Neon's official connector — read-only, secrets redacted. |
 | 📓 **Markdown / Obsidian export** | `claude-brain export <project>` writes a note per session (with Obsidian properties) plus a project index — readable, greppable, versionable. Secrets redacted by default. |
-| 🧭 **Session continuity, opt-in** | `claude-brain context on`: each new session starts with a 3-line list of your latest sessions there (~120 tokens); after `/clear`, a handoff card of the session you just left; after a compaction, a pointer to the verbatim transcript; and a heads-up when a conversation passes 120k tokens. So starting fresh costs you nothing. Local, no network, off by default. |
+| 🧭 **Session continuity, opt-in** | `claude-brain context on`: each new session starts with the project's digest (up to ~750 tokens) and a 3-line list of your latest sessions there; after `/clear`, a handoff card of the session you just left; after a compaction, a pointer to the verbatim transcript; and a heads-up when a conversation passes 120k tokens. So starting fresh costs you nothing. Local, no network, off by default. |
 | 🔌 **MCP server, opt-in** | `claude-brain mcp enable` exposes the archive to Claude Desktop (and, by snippet, Cursor, Codex, Gemini CLI…) as seven read-only tools; off by default, one command to turn off. |
 | 📴 **Offline-first** | The local SQLite is the source of truth; sync just catches up whenever there is internet. |
 
@@ -330,6 +330,10 @@ you, from time to time
 - `sync.py` connects with the owner string in `~/.config/claude-brain/.env` — the only
   credential that can write, and it never leaves the machine.
 - Offline? Archiving keeps working locally; the next reply with internet uploads the backlog.
+- Neon sleeps when idle. The sync retries (3 × 8 s) so a suspended database can wake, and every
+  miss is logged in `ingest.log` with its cause (`timeout`, `closed by the server`, `authentication`,
+  `dns`) — that tells a sleeping Neon from a network that blocks it. `claude-brain web` waits 5 s at
+  most and falls back to the local archive by itself.
 - Computer off? Neon stays as of the last synced reply; claude.ai keeps answering from that.
 - Chats in claude.ai / the mobile app are **not** written automatically (no hooks there) —
   bring them in from time to time with the importer (see Usage).

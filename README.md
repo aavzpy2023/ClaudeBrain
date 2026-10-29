@@ -256,7 +256,7 @@ python3 ~/Projects/ClaudeBrain/brain/install.py          # Windows: py -3 brain\
 | Step | What it does |
 |---|---|
 | Skill | Renders the skill with this machine's paths into `~/.claude/skills/claude-brain/` |
-| Hooks | Async `SessionStart` and `Stop` hooks (ingest, then sync if Neon is configured) and a `SessionEnd` hook (ingest), exec form, no shell |
+| Hooks | Async `SessionStart` and `Stop` hooks (ingest, then sync if Neon is configured, then a detached digest refresh when real work is pending) and a `SessionEnd` hook (ingest), exec form, no shell |
 | Permission | Allows the skill's exact command, so queries never prompt |
 | Retention | Raises `cleanupPeriodDays` to 3650 |
 | Backfill | Archives everything Claude Code still has on disk |
@@ -847,6 +847,16 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.22.0
+- **Self-updating project digests**: after real work (an edit, a write, a `git commit`, or a long
+  discussion) the Stop hook starts a detached `claude -p` that rewrites the project's digest from
+  the previous one plus only what is new — at most every 3 hours, on your subscription, marked `[auto]`.
+  `CLAUDE_BRAIN_AUTODIGEST=1` switches it off.
+- **The digest opens every session**: with `context on`, the briefing leads with the project's digest
+  (cut at 3000 characters) before the list of latest sessions.
+- **A sleeping Neon no longer looks like an outage**: the sync retries (3 × 8 s), `ingest.log` records
+  why each attempt failed, and `claude-brain web` waits 5 s at most before showing the local archive.
 
 ### 0.21.0
 - **`claude-brain web` reads Neon live**: a ☁️ Cloud / 💻 Local switch in the header. Cloud shows

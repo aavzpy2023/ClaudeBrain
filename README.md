@@ -242,6 +242,21 @@ Then, optionally:
 | `/brain:setup` | Shows what's archived and offers the two recommended settings: `cleanupPeriodDays` 3650 (Claude Code otherwise deletes transcripts after 30 days) and a permanent permission for `claude-brain`, so recall never prompts. A plugin can't change your settings by itself, so it asks |
 | `/brain:cloud` | Walks you through the cloud mirror below, step by step |
 
+### Updating
+
+Plugins aren't updated on their own. On **each computer**, from a terminal:
+
+```bash
+claude plugin marketplace update aavzpy2023
+claude plugin update brain@aavzpy2023
+```
+
+Then restart Claude Code (hooks load when a session starts). `claude plugin list` shows the
+installed version. Your database, settings and cloud connection are untouched, and the cloud
+schema upgrades itself on the next sync. Update every computer you use: one still on an old
+version won't apply what you `forget` elsewhere. With the manual install, `git pull` and run
+`install.py` again instead.
+
 <details>
 <summary><b>Manual install</b> — Windows, or without plugins</summary>
 

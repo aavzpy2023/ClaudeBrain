@@ -24,6 +24,7 @@ Recall (local):
   save-digest project|session <key> [--covers-until TS]   (content on stdin)
   alias [<folder name | git remote | path> <project>]
   stats [--project P] [--since DATE]   your history in numbers (--since 2026-01-01: year in review)
+  tokens [--project P] [--since DATE]   token usage and the cost of opening a session (this computer)
   blame <file> [--project P] [--limit N]
                                   the sessions that edited a file, why (your request), and commits
   export <project> | --all [--out DIR] [--since DATE] [--tools] [--no-redact]
@@ -63,7 +64,7 @@ Cloud (optional: your own Neon Postgres, read from claude.ai; needs uv):
 Run `claude-brain <command> --help` for a command's options."""
 
 QUERY_COMMANDS = {"search", "recent", "session", "projects", "project", "save-digest", "alias", "export",
-                  "blame", "stats"}
+                  "blame", "stats", "tokens"}
 CLOUD_FLAGS = {"sync": [], "setup": ["--setup"], "status": ["--status"], "init": ["--init"],
                "reader-password": ["--reader-password"]}
 

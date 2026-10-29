@@ -101,6 +101,7 @@ record.
 | 🔎 **`blame` for the why** | `claude-brain blame src/model.py` lists the sessions that changed a file (edits and shell commands, any clone, any machine), the request you made before each change, and the commits made then. `git blame` tells you who and when; this tells you **why**. |
 | 📊 **Your history in numbers** | `claude-brain stats`: messages and words (yours and Claude's), busiest day, longest streak, the hours you work, top projects, sources and tools — across every computer with the cloud on. `--since 2026-01-01` for a year in review. |
 | 🧹 **Forget, for real** | `claude-brain forget session <id>`, `project <name>` or `text "<leaked string>"` removes them here and in the cloud, on every computer — a dry run until `--yes`; forgotten sessions never come back. |
+| 🔢 **Token usage** | `claude-brain tokens`: replies, output / input / cache tokens, models and projects — and what **opening a session** costs (the context of its first reply, median and p90, week by week), so you can see whether a change to `CLAUDE.md` or the briefing really made sessions start lighter. Recorded from the transcripts' own usage, once per reply; this computer only. |
 | 🌐 **Read it in your browser** | `claude-brain web`: projects, sessions and search, each conversation as a chat, with a ☁️ Cloud / 💻 Local switch (Cloud = every computer, live from Neon) — read-only, served to this computer only. `claude-brain browse` opens the tables in [Datasette](https://datasette.io) for facets and SQL. |
 | 🔍 **Full-text search** | Accent-insensitive, and each word matches its variants (`regresiones` finds `regresión` and `regression`); `OR`, `"phrases"` and `-exclusions`. Claude widens searches with synonyms and your other languages before giving up. Same results locally and from claude.ai. |
 | 📁 **Organized by project** | Git repos are identified by their remote (`github.com/owner/repo`), so every clone and every subfolder lands in one project; other folders by their normalized name — `2026-ML vs GNN` and `MLvsGNN` merge into `mlvsgnn`. Aliases (by folder name or remote) handle the exceptions and are shared by all your computers. |
@@ -401,6 +402,7 @@ Q=claude-brain
 $Q status                                     # what's archived, pending sync, retention, cloud
 $Q projects                                   # all projects, sessions, last activity
 $Q stats --since 2026-01-01                   # your year in review: volume, rhythm, projects, tools
+$Q tokens --project mlvsgnn                   # token usage, and what opening a session costs
 $Q recent --project thesis --limit 5          # latest sessions (partial names work)
 $Q search "graphsage naive bayes" --since 2026-10-01
 $Q search 'rendimiento OR performance OR slow -benchmark'   # alternatives, exclusion
@@ -698,6 +700,7 @@ brain/
   context.py   optional continuity: briefing, /clear handoff, size heads-up (claude-brain context)
   blame.py     claude-brain blame: sessions that changed a file, why, and commits
   stats.py     claude-brain stats: volume, rhythm, streaks, projects, tools
+  tokens.py    claude-brain tokens: token usage per model/project, and the cost of opening a session
   forget.py    claude-brain forget: sessions, projects or a string — tombstones, synced
   web.py       claude-brain web: read-only conversation viewer, Cloud/Local switch (stdlib http.server)
   datasette.json  `claude-brain browse`: hidden tables, facets, full-text search, canned queries
@@ -848,6 +851,12 @@ repo (same remote) or the same aliased folder end up under one project name.
 - [x] Git-aware projects: same remote = same project, on any machine and in any subfolder
 
 ## 📜 Changelog
+
+### 0.24.0
+- **`claude-brain tokens`**: token usage recorded from the transcripts (one row per reply — Claude Code
+  repeats a reply's usage on every block, so it is deduplicated). Totals, models, projects, and the
+  cost of opening a session (median / p90, by week). Existing archives are backfilled by one re-read
+  of the transcripts. Local only; forgetting a session removes its usage.
 
 ### 0.23.0
 - **Digests sync between computers, like conversations**: each sync also pulls the project digests

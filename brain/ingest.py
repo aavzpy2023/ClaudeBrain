@@ -95,6 +95,23 @@ def extract(record: dict) -> tuple[str, str] | None:
     return (kind if has_prose else "tool", text) if text else None
 
 
+def _record_usage(conn: sqlite3.Connection, record: dict, session_id: str) -> None:
+    message = record.get("message") or {}
+    usage = message.get("usage")
+    if record.get("type") != "assistant" or not usage or not message.get("id") \
+            or message.get("model") == "<synthetic>":
+        return
+    conn.execute(
+        """INSERT INTO usage(msg_id, session_id, ts, model, is_sidechain, input, cache_write, cache_read, output)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(msg_id) DO UPDATE SET output = MAX(output, excluded.output)""",  # streamed: the last repeat is final
+        (message["id"], session_id, record.get("timestamp"), message.get("model"),
+         1 if record.get("isSidechain") else 0, usage.get("input_tokens") or 0,
+         usage.get("cache_creation_input_tokens") or 0, usage.get("cache_read_input_tokens") or 0,
+         usage.get("output_tokens") or 0),
+    )
+
+
 def _upsert_session(conn: sqlite3.Connection, record: dict, aliases) -> None:
     cwd = record.get("cwd")
     conn.execute(
@@ -152,6 +169,7 @@ def ingest_file(conn: sqlite3.Connection, path: Path, start: int, aliases, touch
                     touched.add(session_id)
                 continue
 
+            _record_usage(conn, record, session_id)  # before extract: thinking-only replies cost tokens too
             extracted = extract(record)
             if not extracted or not record.get("uuid"):
                 continue

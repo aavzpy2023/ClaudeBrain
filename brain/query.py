@@ -375,6 +375,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project")
     p.add_argument("--since", help="ISO date, e.g. 2026-01-01 for a year in review")
 
+    p = sub.add_parser("tokens", help="token usage: totals, models, projects and the cost of opening a session")
+    p.add_argument("--project")
+    p.add_argument("--since", help="ISO date, e.g. 2026-10-01")
+
     p = sub.add_parser("export", help="write projects as Markdown notes (Obsidian-friendly)")
     p.add_argument("project", nargs="?", help="project name (partial ok); or --all")
     p.add_argument("--all", action="store_true", help="every project")
@@ -491,6 +495,10 @@ def render(conn, args, api=None) -> str:
         from brain import stats
 
         stats.run(conn, api, args, say)
+    elif args.cmd == "tokens":
+        from brain import tokens
+
+        tokens.run(conn, api, args, say)
     elif args.cmd == "export":
         from brain import export  # imports brain.sync for redaction; keep query's import light
 

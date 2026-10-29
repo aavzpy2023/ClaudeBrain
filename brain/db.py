@@ -76,6 +76,20 @@ CREATE TABLE IF NOT EXISTS digests (
 );
 CREATE INDEX IF NOT EXISTS digests_key ON digests(scope, key, id);
 
+-- One row per reply: Claude Code repeats a reply's usage on every content block, so msg_id dedupes.
+CREATE TABLE IF NOT EXISTS usage (
+    msg_id       TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    ts           TEXT,
+    model        TEXT,
+    is_sidechain INTEGER NOT NULL DEFAULT 0,
+    input        INTEGER NOT NULL,
+    cache_write  INTEGER NOT NULL,
+    cache_read   INTEGER NOT NULL,
+    output       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_session ON usage(session_id, ts);
+
 CREATE TABLE IF NOT EXISTS sync_state (
     key   TEXT PRIMARY KEY,
     value INTEGER NOT NULL
@@ -119,7 +133,11 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     _migrate_repo_columns(conn)
+    had_usage = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'usage'").fetchone()
     conn.executescript(SCHEMA)
+    if not had_usage:
+        conn.execute("DELETE FROM files")  # forget the offsets: the next ingest re-reads once to backfill usage
+        conn.commit()
     _migrate_digest_origin(conn)
     _migrate_path_aliases(conn)
     return conn

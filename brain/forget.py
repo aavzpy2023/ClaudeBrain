@@ -54,6 +54,7 @@ def forget_sessions(conn, ids, synced: bool = False) -> int:
         return 0
     deleted = conn.execute(f"DELETE FROM messages WHERE session_id IN ({_in(ids)})", ids).rowcount
     conn.execute(f"DELETE FROM sessions WHERE session_id IN ({_in(ids)})", ids)
+    conn.execute(f"DELETE FROM usage WHERE session_id IN ({_in(ids)})", ids)
     conn.execute(f"DELETE FROM digests WHERE scope = 'session' AND key IN ({_in(ids)})", ids)
     conn.executemany("INSERT OR IGNORE INTO forgotten (session_id, synced) VALUES (?, ?)",
                      [(i, int(synced)) for i in ids])

@@ -14,6 +14,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -289,7 +290,12 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def open_cloud():
+CLOUD_DEADLINE = 5  # seconds the page waits for Neon before using the local archive
+CLOUD_BACKOFF = 60  # after a failure, skip the cloud this long so each click doesn't wait again
+_cloud_down_until = 0.0
+
+
+def open_cloud(retry: bool = False):
     """A read-only connection to Neon (the sync's direct endpoint); needs psycopg."""
     import psycopg
     from psycopg.rows import dict_row
@@ -297,9 +303,31 @@ def open_cloud():
     from brain import remote
     from brain.sync import direct_url, neon_url
 
-    conn = psycopg.connect(direct_url(neon_url()), connect_timeout=8, row_factory=dict_row)
-    conn.read_only = True
-    return conn, remote
+    global _cloud_down_until
+    if not retry and time.monotonic() < _cloud_down_until:
+        raise OSError("cloud unreachable a moment ago; not retrying yet")
+    box: dict = {}
+
+    def attempt():
+        try:
+            conn = psycopg.connect(direct_url(neon_url()), connect_timeout=CLOUD_DEADLINE, row_factory=dict_row)
+            if box.get("abandoned"):
+                conn.close()  # arrived after the page gave up
+            else:
+                box["conn"] = conn
+        except Exception as exc:
+            box["error"] = exc
+
+    # connect_timeout is per address and Neon lists six, so bound the whole wait here instead.
+    worker = threading.Thread(target=attempt, daemon=True)
+    worker.start()
+    worker.join(CLOUD_DEADLINE)
+    if "conn" not in box:
+        box["abandoned"] = True
+        _cloud_down_until = time.monotonic() + CLOUD_BACKOFF
+        raise box.get("error") or TimeoutError(f"no answer from the cloud in {CLOUD_DEADLINE} s")
+    box["conn"].read_only = True
+    return box["conn"], remote
 
 
 def cloud_available() -> bool:
@@ -327,9 +355,9 @@ def make_handler(path: Path, cloud: bool):
             self.end_headers()
             self.wfile.write(data)
 
-        def _open(self, name: str) -> Source:
+        def _open(self, name: str, explicit: bool = False) -> Source:
             if name == "cloud":
-                conn, api = open_cloud()
+                conn, api = open_cloud(retry=explicit)
                 return Source("cloud", conn, api, "%s")
             return Source("local", open_readonly(path), query, "?")
 
@@ -343,8 +371,13 @@ def make_handler(path: Path, cloud: bool):
                 name = "local"
             q = args.get("q", "") if url.path == "/search" else ""
             try:
-                src = self._open(name)
+                src = self._open(name, "src" in args)
             except Exception as exc:
+                if "src" not in args:  # nobody asked for the cloud: show the local archive instead
+                    self.send_response(302)
+                    self.send_header("Location", f"{url.path}?{urlencode({**args, 'src': 'local'})}")
+                    self.end_headers()
+                    return
                 return self._send(502, page("Cloud unreachable", (
                     f"<h1>Can't reach the cloud</h1><p>{e(exc)}</p>"
                     f"<p><a href='{link('/', 'local')}'>Use the local archive instead</a></p>"), "cloud", cloud))

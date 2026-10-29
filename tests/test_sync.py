@@ -219,3 +219,49 @@ def test_sync_forgotten_pushes_tombstones_redactions_and_pulls_others(conn, root
     again = RecordingNeon(theirs=[SID, SID2])
     assert sync_forgotten(conn, again) == 0
     assert not any(q.startswith("DELETE") for q, _ in again.sql)  # nothing left to push
+
+
+class _FakePsycopg:
+    class OperationalError(Exception):
+        pass
+
+    def __init__(self, failures):
+        self.failures, self.calls = failures, 0
+
+    def connect(self, url, connect_timeout):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise self.OperationalError("connection timeout expired")
+        return "conn"
+
+
+def test_failure_kind_names_the_cause():
+    from brain.sync import failure_kind
+    assert failure_kind(Exception("connection timeout expired")) == "timeout"
+    assert failure_kind(Exception("server closed the connection unexpectedly")) == "closed by the server"
+    assert failure_kind(Exception("password authentication failed")) == "authentication"
+    assert failure_kind(Exception("could not translate host name")) == "dns"
+
+
+def test_connect_awake_retries_a_sleeping_compute_and_logs_each_miss(monkeypatch):
+    import io
+    import sys
+    from brain.sync import connect_awake
+    fake = _FakePsycopg(failures=2)
+    monkeypatch.setitem(sys.modules, "psycopg", fake)
+    log = io.StringIO()
+    assert connect_awake("postgresql://u:p@h/db", pause=0, log=log) == "conn"
+    assert fake.calls == 3 and log.getvalue().count("timeout") == 2
+    assert "attempt 1/3" in log.getvalue() and "u:p" not in log.getvalue()  # never the credentials
+
+
+def test_connect_awake_gives_up_after_the_last_attempt(monkeypatch):
+    import io
+    import sys
+    import pytest
+    from brain.sync import connect_awake
+    fake = _FakePsycopg(failures=9)
+    monkeypatch.setitem(sys.modules, "psycopg", fake)
+    with pytest.raises(fake.OperationalError):
+        connect_awake("postgresql://u:p@h/db", attempts=2, pause=0, log=io.StringIO())
+    assert fake.calls == 2

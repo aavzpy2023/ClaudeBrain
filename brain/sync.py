@@ -81,6 +81,42 @@ def direct_url(url: str) -> str:
     return urlunsplit(parts._replace(netloc=parts.netloc.replace(host, host.replace("-pooler.", ".", 1))))
 
 
+WAKE_ATTEMPTS = 3
+WAKE_TIMEOUT = 8  # per address: a suspended compute usually answers within seconds of the first try
+WAKE_PAUSE = 2
+
+
+def failure_kind(exc: Exception) -> str:
+    """Why a connection failed, in a word, so ingest.log tells a sleeping Neon from a blocked network."""
+    text = str(exc).lower()
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if "closed the connection" in text:
+        return "closed by the server"
+    if "authentication" in text:
+        return "authentication"
+    if "translate host" in text or "name or service" in text or "name resolution" in text:
+        return "dns"
+    return "refused or other"
+
+
+def connect_awake(url: str, attempts: int = WAKE_ATTEMPTS, timeout: int = WAKE_TIMEOUT,
+                  pause: float = WAKE_PAUSE, log=None):
+    """Connect to Neon, retrying so a suspended compute has time to wake; every failure is logged with its
+    kind. Raises the last psycopg.OperationalError."""
+    import psycopg
+
+    log = log or sys.stderr
+    for n in range(1, attempts + 1):
+        try:
+            return psycopg.connect(direct_url(url), connect_timeout=timeout)
+        except psycopg.OperationalError as exc:
+            print(f"{_now()} neon unreachable, attempt {n}/{attempts}: {failure_kind(exc)}", file=log)
+            if n == attempts:
+                raise
+            time.sleep(pause)
+
+
 def find_uv() -> str | None:
     """uv on PATH, else where its installers put it (hooks may run with a minimal PATH)."""
     found = shutil.which("uv")
@@ -430,7 +466,7 @@ def main(argv=None) -> None:
 
     started = time.monotonic()
     try:
-        remote = psycopg.connect(direct_url(url), connect_timeout=10)
+        remote = connect_awake(url)
     except psycopg.OperationalError as exc:
         # Offline is normal: the watermarks stay put and the next run catches up.
         if not args.quiet:

@@ -123,3 +123,38 @@ def test_unreachable_cloud_offers_the_local_archive(db, monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_cloud_down_without_explicit_source_redirects_to_local(db, monkeypatch):
+    def down(retry=False):
+        raise OSError("timeout")
+    monkeypatch.setattr(web, "open_cloud", down)
+    server = web.bind(db, 0, cloud=True)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/search?q=GraphSAGE") as resp:
+            assert resp.status == 200 and "src=local" in resp.url and "q=GraphSAGE" in resp.url
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_open_cloud_waits_a_bounded_time_then_backs_off(monkeypatch):
+    import sys
+    import types
+    release = threading.Event()
+    fake = types.ModuleType("psycopg")
+    fake.connect = lambda *a, **k: release.wait(5)
+    rows = types.ModuleType("psycopg.rows")
+    rows.dict_row = None
+    monkeypatch.setitem(sys.modules, "psycopg", fake)
+    monkeypatch.setitem(sys.modules, "psycopg.rows", rows)
+    monkeypatch.setattr("brain.sync.neon_url", lambda: "postgresql://u:p@h/db")
+    monkeypatch.setattr(web, "CLOUD_DEADLINE", 0.2)
+    monkeypatch.setattr(web, "_cloud_down_until", 0.0)
+    with pytest.raises(TimeoutError):
+        web.open_cloud()
+    with pytest.raises(OSError, match="not retrying"):
+        web.open_cloud()  # inside the backoff window: instant
+    release.set()

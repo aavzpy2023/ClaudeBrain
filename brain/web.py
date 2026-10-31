@@ -69,6 +69,8 @@ mark { background:var(--mark); color:inherit; padding:0 1px; }
 .switch a { padding:7px 12px; color:var(--muted); background:var(--card); }
 .switch a.on { background:var(--accent); color:#fff; font-weight:600; }
 .switch a:hover { text-decoration:none; }
+details.folder { border:1px solid var(--line); border-radius:10px; margin:12px 0; padding:2px 14px; background:var(--card); }
+details.folder > summary { cursor:pointer; padding:10px 0; font-size:16px; }
 .toolcall { margin:6px 0; } .toolcall b { font-size:12px; }
 .toolcall pre { margin:2px 0 0; padding:8px; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
 .sortbtn { display:inline-block; padding:6px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card); font-size:13px; }
@@ -269,14 +271,14 @@ def session_page(src: Source, prefix: str, order: str = "desc") -> tuple[str, st
 
 
 def digests_page(src: Source) -> tuple[str, str]:
-    """Every saved digest, a project's before a session's; the latest version open to read, older
-    versions folded under it."""
+    """Every saved digest, in one folder per project: the project's own digest, then its sessions'.
+    The latest version of each is open to read, older versions folded under it."""
     rows = src.rows("SELECT id, scope, key, covers_until_ts, content, created_at FROM digests "
                     "ORDER BY id DESC")
     groups: dict[tuple[str, str], list] = {}
     for r in rows:
         groups.setdefault((r["scope"], r["key"]), []).append(r)
-    titles = {r["session_id"]: r["title"] for r in src.rows("SELECT session_id, title FROM sessions")} \
+    info = {r["session_id"]: dict(r) for r in src.rows("SELECT session_id, title, project FROM sessions")} \
         if any(scope == "session" for scope, _ in groups) else {}
 
     def card(r) -> str:
@@ -284,18 +286,33 @@ def digests_page(src: Source) -> tuple[str, str]:
         return (f"<div class=msg summary><div class=who><span>saved {e(local_time(r['created_at']))}{covers}"
                 f"</span></div><div class=body>{render_text(r['content'], bold=True)}</div></div>")
 
-    parts = []
-    for (scope, key), versions in sorted(groups.items(), key=lambda g: g[0][0] != "project"):
-        target = (link("/project", src.name, name=key) if scope == "project"
-                  else link("/session", src.name, id=key))
-        label = key if scope == "project" else (titles.get(key) or key[:8])
+    def entry(heading: str, versions: list) -> str:
         older = "".join(card(v) for v in versions[1:])
         folded = (f"<details class=tool><summary>{len(versions) - 1} older version(s)</summary>{older}</details>"
                   if older else "")
-        parts.append(f"<h2>{'📁' if scope == 'project' else '💬'} <a href='{target}'>{e(label)}</a> "
-                     f"<span class=meta>{e(scope)} digest</span></h2>{card(versions[0])}{folded}")
+        return f"<h2>{heading}</h2>{card(versions[0])}{folded}"
+
+    folders: dict[str, list[str]] = {}  # project -> its entries, project digest first
+    recent: dict[str, int] = {}  # project -> id of its newest digest
+    for (scope, key), versions in sorted(groups.items(), key=lambda g: g[0][0] != "project"):
+        if scope == "project":
+            project = key
+            heading = f"📁 <a href='{link('/project', src.name, name=key)}'>{e(key)}</a> <span class=meta>project digest</span>"
+        else:
+            project = (info.get(key) or {}).get("project") or "(no project)"
+            title = (info.get(key) or {}).get("title") or key[:8]
+            heading = f"💬 <a href='{link('/session', src.name, id=key)}'>{e(title)}</a> <span class=meta>session digest</span>"
+        folders.setdefault(project, []).append(entry(heading, versions))
+        recent[project] = max(recent.get(project, 0), versions[0]["id"])
+    order = sorted(folders, key=recent.get, reverse=True)
+    parts = []
+    for i, name in enumerate(order):
+        count = len(folders[name])
+        parts.append(f"<details class=folder{' open' if i == 0 else ''}><summary>📁 <b>{e(name)}</b> "
+                     f"<span class=meta>· {count} digest{'s' if count != 1 else ''}</span></summary>"
+                     f"{''.join(folders[name])}</details>")
     intro = ("<p class=meta>Summaries Claude saved while answering you, so the next report on the same "
-             "project only reads what is new.</p>")
+             "project only reads what is new. One folder per project.</p>")
     return "Digests", (f"<h1>Digests</h1>{intro}" + ("".join(parts) or "<p>No digests yet. Ask Claude for a "
                                                       "summary or report of a project and it will save one.</p>"))
 

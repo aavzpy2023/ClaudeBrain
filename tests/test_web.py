@@ -64,17 +64,24 @@ def test_tool_calls_show_one_argument_per_line_even_when_clipped():
     assert web.format_args("not json at all") == "not json at all"
 
 
-def test_digests_tab_lists_latest_version_first_with_older_folded(db):
+def test_digests_tab_groups_by_project_with_older_versions_folded(db):
     conn = connect(db)
     query.save_digest(conn, "project", "mlvsgnn", "Old summary: <b>x</b>")
     query.save_digest(conn, "project", "mlvsgnn", "New summary with `code` and **bold**")
     query.save_digest(conn, "session", SID, "Session notes")
+    conn.execute("INSERT INTO digests (scope, key, content) VALUES ('session', 'gone', 'Orphan notes')")
+    conn.commit()
     conn.close()
     page = web.digests_page(_local(db))[1]
     assert page.index("New summary") < page.index("1 older version(s)") < page.index("Old summary")
     assert "&lt;b&gt;x&lt;/b&gt;" in page and "<code>code</code>" in page and "<b>bold</b>" in page
     assert "**" in web.render_text("**kept**")
-    assert page.index("📁") < page.index("💬") and "GNN training" in page
+    folders = page.split("<details class=folder")[1:]
+    assert "(no project)" in folders[0]  # newest digest first
+    folder = next(f for f in folders if "<b>mlvsgnn</b>" in f)  # project digest, then its session's
+    assert "<b>mlvsgnn</b>" in folder and folder.index("project digest") < folder.index("Session notes")
+    assert "GNN training" in folder and "Orphan notes" not in folder
+    assert "Orphan notes" in folders[0]
     assert "href='/digests?src=local'" in web.page("t", "", "local", False)
 
 

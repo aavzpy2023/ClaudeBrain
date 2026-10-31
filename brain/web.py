@@ -105,15 +105,17 @@ def local_time(ts: str | None) -> str:
         return ts[:16].replace("T", " ")
 
 
-def render_text(text: str) -> str:
-    """Escaped text with ``` fences as code blocks and `inline code`; everything else verbatim."""
+def render_text(text: str, bold: bool = False) -> str:
+    """Escaped text with ``` fences as code blocks and `inline code`; everything else verbatim
+    (`bold`: also **bold**, for digests, which Claude writes that way)."""
     out = []
     for i, part in enumerate(re.split(r"```", text or "")):
         if i % 2:
             body = part.split("\n", 1)[1] if "\n" in part else part  # drop the language tag
             out.append(f"<pre><code>{e(body.rstrip())}</code></pre>")
         else:
-            out.append(re.sub(r"`([^`\n]+)`", r"<code>\1</code>", e(part)))
+            html_part = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", e(part))
+            out.append(re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", html_part) if bold else html_part)
     return "".join(out)
 
 
@@ -179,6 +181,7 @@ def page(title: str, body: str, src: str, cloud: bool, q: str = "") -> str:
             f"<meta name=viewport content='width=device-width, initial-scale=1'>"
             f"<title>{e(title)} · ClaudeBrain</title><style>{CSS}</style></head><body><main>"
             f"<header><a class=home href='{link('/', src)}'>🧠 ClaudeBrain</a>"
+            f"<a href='{link('/digests', src)}'>📝 Digests</a>"
             f"<form class=search action='/search'><input type=hidden name=src value='{e(src)}'>"
             f"<input type=search name=q value='{e(q)}' placeholder='Search every conversation…' "
             f"aria-label=Search><button>Search</button></form>"
@@ -263,6 +266,38 @@ def session_page(src: Source, prefix: str, order: str = "desc") -> tuple[str, st
             f"{'↓ Newest first' if order == 'desc' else '↑ Oldest first'} · switch to "
             f"{'oldest' if order == 'desc' else 'newest'} first</a></p>")
     return s["title"] or sid[:8], head + sort + "".join(parts)
+
+
+def digests_page(src: Source) -> tuple[str, str]:
+    """Every saved digest, a project's before a session's; the latest version open to read, older
+    versions folded under it."""
+    rows = src.rows("SELECT id, scope, key, covers_until_ts, content, created_at FROM digests "
+                    "ORDER BY id DESC")
+    groups: dict[tuple[str, str], list] = {}
+    for r in rows:
+        groups.setdefault((r["scope"], r["key"]), []).append(r)
+    titles = {r["session_id"]: r["title"] for r in src.rows("SELECT session_id, title FROM sessions")} \
+        if any(scope == "session" for scope, _ in groups) else {}
+
+    def card(r) -> str:
+        covers = f" · covers until {e(local_time(r['covers_until_ts']))}" if r["covers_until_ts"] else ""
+        return (f"<div class=msg summary><div class=who><span>saved {e(local_time(r['created_at']))}{covers}"
+                f"</span></div><div class=body>{render_text(r['content'], bold=True)}</div></div>")
+
+    parts = []
+    for (scope, key), versions in sorted(groups.items(), key=lambda g: g[0][0] != "project"):
+        target = (link("/project", src.name, name=key) if scope == "project"
+                  else link("/session", src.name, id=key))
+        label = key if scope == "project" else (titles.get(key) or key[:8])
+        older = "".join(card(v) for v in versions[1:])
+        folded = (f"<details class=tool><summary>{len(versions) - 1} older version(s)</summary>{older}</details>"
+                  if older else "")
+        parts.append(f"<h2>{'📁' if scope == 'project' else '💬'} <a href='{target}'>{e(label)}</a> "
+                     f"<span class=meta>{e(scope)} digest</span></h2>{card(versions[0])}{folded}")
+    intro = ("<p class=meta>Summaries Claude saved while answering you, so the next report on the same "
+             "project only reads what is new.</p>")
+    return "Digests", (f"<h1>Digests</h1>{intro}" + ("".join(parts) or "<p>No digests yet. Ask Claude for a "
+                                                      "summary or report of a project and it will save one.</p>"))
 
 
 def search_page(src: Source, q: str) -> tuple[str, str]:
@@ -388,6 +423,8 @@ def make_handler(path: Path, cloud: bool):
                     title, body = project_page(src, args.get("name", ""))
                 elif url.path == "/session":
                     title, body = session_page(src, args.get("id", ""), args.get("order", "desc"))
+                elif url.path == "/digests":
+                    title, body = digests_page(src)
                 elif url.path == "/search":
                     title, body = search_page(src, q) if q else ("Your history", index_page(src))
                 else:

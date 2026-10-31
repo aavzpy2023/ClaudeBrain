@@ -482,7 +482,7 @@ header chooses the source: Cloud reads Neon live — every computer's sessions, 
 sync, labelled `@host` — and Local reads this machine's archive (instant, works offline). Cloud
 is the default when configured, and it runs through uv like the other cloud commands; without
 the cloud nothing extra is needed (Python's standard library). It shows your
-latest sessions and projects, every conversation as a chat, newest message first (one click flips it) — tool calls folded away and one argument per line, code
+latest sessions and projects, every conversation as a chat, newest message first (one click flips it) — tool calls folded away and one argument per line, a 📝 **Digests** tab with the saved summaries (latest version open, older ones folded), code
 formatted, a link on every message's time — the exact `claude --resume` command, and search
 across everything with the hits highlighted. Local pages open in milliseconds; Cloud ones in
 about a second or two (a new connection to Neon per page). `--no-cloud` forces local.

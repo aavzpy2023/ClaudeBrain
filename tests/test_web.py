@@ -64,6 +64,20 @@ def test_tool_calls_show_one_argument_per_line_even_when_clipped():
     assert web.format_args("not json at all") == "not json at all"
 
 
+def test_digests_tab_lists_latest_version_first_with_older_folded(db):
+    conn = connect(db)
+    query.save_digest(conn, "project", "mlvsgnn", "Old summary: <b>x</b>")
+    query.save_digest(conn, "project", "mlvsgnn", "New summary with `code` and **bold**")
+    query.save_digest(conn, "session", SID, "Session notes")
+    conn.close()
+    page = web.digests_page(_local(db))[1]
+    assert page.index("New summary") < page.index("1 older version(s)") < page.index("Old summary")
+    assert "&lt;b&gt;x&lt;/b&gt;" in page and "<code>code</code>" in page and "<b>bold</b>" in page
+    assert "**" in web.render_text("**kept**")
+    assert page.index("📁") < page.index("💬") and "GNN training" in page
+    assert "href='/digests?src=local'" in web.page("t", "", "local", False)
+
+
 def test_switch_marks_the_active_source_and_greys_out_a_missing_cloud():
     both = web.page("t", "", "cloud", cloud=True)
     assert "class='on' href='/?src=cloud'" in both and "href='/?src=local'" in both
